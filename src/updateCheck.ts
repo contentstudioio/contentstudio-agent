@@ -112,7 +112,7 @@ function banner(latest: string, current: string): string {
     "",
     `${yellow}⚠${reset} contentstudio-cli ${yellow}${latest}${reset} is available (you have ${current})`,
     `  ${dim}Run:${reset} npm install -g contentstudio-cli@latest`,
-    `  ${dim}Refresh skill:${reset} npx skills add d4interactive/contentstudio-agent`,
+    `  ${dim}Refresh skill:${reset} npx skills add contentstudioio/contentstudio-agent`,
     `  ${dim}(silence with CONTENTSTUDIO_NO_UPDATE_CHECK=1)${reset}`,
     "",
     "",

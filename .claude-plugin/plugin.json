@@ -7,7 +7,7 @@
     "url": "https://contentstudio.io"
   },
   "homepage": "https://api.contentstudio.io/guide",
-  "repository": "https://github.com/d4interactive/contentstudio-agent",
+  "repository": "https://github.com/contentstudioio/contentstudio-agent",
   "license": "MIT",
   "skills": ["./"],
   "keywords": [

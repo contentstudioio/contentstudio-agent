@@ -26,7 +26,7 @@ declare const __VERSION__: string;
 
 export const VERSION: string =
   typeof __VERSION__ !== "undefined" ? __VERSION__ : "0.0.0-dev";
-export const USER_AGENT = `contentstudio-cli/${VERSION} (+https://github.com/d4interactive/contentstudio-agent)`;
+export const USER_AGENT = `contentstudio-cli/${VERSION} (+https://github.com/contentstudioio/contentstudio-agent)`;
 export const DEFAULT_TIMEOUT_MS = 30_000;
 
 export interface ClientOpts {

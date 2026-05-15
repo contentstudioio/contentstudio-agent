@@ -5,7 +5,7 @@
 
 **Install as a skill:**
 ```bash
-npx skills add d4interactive/contentstudio-agent
+npx skills add contentstudioio/contentstudio-agent
 ```
 
 ContentStudio CLI — schedule social-media posts, manage media, accounts, comments, and approvals across **Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, and Google Business Profile** through the [ContentStudio](https://contentstudio.io) public API.
@@ -40,7 +40,7 @@ contentstudio --help
 If you use an AI assistant (Claude Code, Cursor, OpenCode, Codex, Augment, IBM Bob, etc.), install the SKILL.md so the agent can drive this CLI on your behalf:
 
 ```bash
-npx skills add d4interactive/contentstudio-agent
+npx skills add contentstudioio/contentstudio-agent
 ```
 
 Pick which agents to install into in the interactive prompt. The SKILL.md is dropped into each agent's skill directory (e.g. `~/.claude/skills/contentstudio/SKILL.md`).
@@ -614,7 +614,7 @@ Every mutating command (`posts:create`, `posts:delete`, `posts:approve`, `posts:
 
 The repo ships a `SKILL.md` agents can install with one command:
 ```bash
-npx skills add d4interactive/contentstudio-agent
+npx skills add contentstudioio/contentstudio-agent
 ```
 After this, the agent automatically knows when to use the `contentstudio` CLI without prompting.
 
@@ -910,7 +910,7 @@ npm run test:watch   # vitest in watch mode
 
 ## Contributing
 
-1. Fork the repo at <https://github.com/d4interactive/contentstudio-agent>
+1. Fork the repo at <https://github.com/contentstudioio/contentstudio-agent>
 2. Branch off `main`
 3. Make your changes; add/update tests
 4. `npm test` — must stay green
@@ -919,7 +919,7 @@ npm run test:watch   # vitest in watch mode
 ## Links
 
 - **npm**: <https://www.npmjs.com/package/contentstudio-cli>
-- **GitHub**: <https://github.com/d4interactive/contentstudio-agent>
+- **GitHub**: <https://github.com/contentstudioio/contentstudio-agent>
 - **API guide**: <https://api.contentstudio.io/guide>
 - **OpenAPI spec**: <https://api.contentstudio.io/api-docs>
 - **ContentStudio**: <https://contentstudio.io>

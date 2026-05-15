@@ -42,11 +42,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/d4interactive/contentstudio-agent.git"
+    "url": "https://github.com/contentstudioio/contentstudio-agent.git"
   },
   "homepage": "https://api.contentstudio.io/guide",
   "bugs": {
-    "url": "https://github.com/d4interactive/contentstudio-agent/issues"
+    "url": "https://github.com/contentstudioio/contentstudio-agent/issues"
   },
   "engines": {
     "node": ">=18.0.0"

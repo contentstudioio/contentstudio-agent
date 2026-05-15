@@ -14,7 +14,7 @@ pnpm install -g contentstudio-cli
 ```
 
 npm release: https://www.npmjs.com/package/contentstudio-cli
-contentstudio-agent github: https://github.com/d4interactive/contentstudio-agent
+contentstudio-agent github: https://github.com/contentstudioio/contentstudio-agent
 contentstudio API docs: https://api.contentstudio.io/api-docs
 official website: https://contentstudio.io
 
