@@ -175,6 +175,10 @@ export class Client {
     return this.request<T>("POST", p, { json: body?.json, form: body?.form });
   }
 
+  put<T = unknown>(p: string, body?: { json?: unknown }): Promise<T> {
+    return this.request<T>("PUT", p, { json: body?.json });
+  }
+
   delete<T = unknown>(p: string, body?: unknown): Promise<T> {
     return this.request<T>("DELETE", p, { json: body });
   }
@@ -538,6 +542,121 @@ export function addFacebookGroup(
  */
 export function listFacebookTextBackgrounds(c: Client) {
   return c.get<any>("/facebook/text-backgrounds");
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Workspaces — create / update / delete (write operations).
+// `createWorkspace` is NOT workspace-scoped (POST /workspaces).
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * POST /workspaces — create a new workspace. Not workspace-scoped.
+ * `name`, `logo`, `timezone` are required; the rest are optional.
+ */
+export function createWorkspace(c: Client, body: unknown) {
+  return c.post<any>("/workspaces", { json: body });
+}
+
+/** PUT /workspaces/{id} — update an existing workspace (partial). */
+export function updateWorkspace(c: Client, workspaceId: string, body: unknown) {
+  return c.put<any>(`/workspaces/${workspaceId}`, { json: body });
+}
+
+/** DELETE /workspaces/{id} — delete a workspace. */
+export function deleteWorkspace(c: Client, workspaceId: string) {
+  return c.delete<any>(`/workspaces/${workspaceId}`);
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Labels — create / update / delete (workspace-scoped).
+// ─────────────────────────────────────────────────────────────────
+
+export function createLabel(c: Client, workspaceId: string, body: unknown) {
+  return c.post<any>(`/workspaces/${workspaceId}/labels`, { json: body });
+}
+
+export function updateLabel(
+  c: Client,
+  workspaceId: string,
+  labelId: string,
+  body: unknown,
+) {
+  return c.put<any>(`/workspaces/${workspaceId}/labels/${labelId}`, {
+    json: body,
+  });
+}
+
+export function deleteLabel(c: Client, workspaceId: string, labelId: string) {
+  return c.delete<any>(`/workspaces/${workspaceId}/labels/${labelId}`);
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Campaigns — create / update / delete (workspace-scoped).
+// ─────────────────────────────────────────────────────────────────
+
+export function createCampaign(c: Client, workspaceId: string, body: unknown) {
+  return c.post<any>(`/workspaces/${workspaceId}/campaigns`, { json: body });
+}
+
+export function updateCampaign(
+  c: Client,
+  workspaceId: string,
+  campaignId: string,
+  body: unknown,
+) {
+  return c.put<any>(`/workspaces/${workspaceId}/campaigns/${campaignId}`, {
+    json: body,
+  });
+}
+
+export function deleteCampaign(
+  c: Client,
+  workspaceId: string,
+  campaignId: string,
+) {
+  return c.delete<any>(`/workspaces/${workspaceId}/campaigns/${campaignId}`);
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Team members — add / update / remove (workspace-scoped).
+// `member_id` is the membership id (the member_id field from team:list).
+// ─────────────────────────────────────────────────────────────────
+
+export function addTeamMember(c: Client, workspaceId: string, body: unknown) {
+  return c.post<any>(`/workspaces/${workspaceId}/team-members`, { json: body });
+}
+
+export function updateTeamMember(
+  c: Client,
+  workspaceId: string,
+  memberId: string,
+  body: unknown,
+) {
+  return c.put<any>(`/workspaces/${workspaceId}/team-members/${memberId}`, {
+    json: body,
+  });
+}
+
+/**
+ * DELETE /workspaces/{w}/team-members/{member_id}
+ *
+ * When the member is in approval workflows / in-flight posts the backend
+ * returns error_code REQUIRES_REMOVAL_CONFIRMATION (422); resend with
+ * `confirmed=true` (sent as a `?confirmed=true` query param) to proceed.
+ */
+export function removeTeamMember(
+  c: Client,
+  workspaceId: string,
+  memberId: string,
+  opts: { confirmed?: boolean } = {},
+) {
+  const params: Record<string, unknown> = {};
+  if (opts.confirmed) params.confirmed = "true";
+  return c.request<any>(
+    "DELETE",
+    `/workspaces/${workspaceId}/team-members/${memberId}`,
+    { params },
+  );
 }
 
 // Re-export ContentStudioError for convenience in commands.
