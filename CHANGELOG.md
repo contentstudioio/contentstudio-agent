@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — write commands for workspaces/labels/campaigns/team + posts:create fixes
+
+- Fixed `posts:create`: now emits top-level `content_category_id` and no longer forces `--account` when `--content-category-id` is supplied (content-category posts derive accounts from the category — previously 422'd). Added `--content-category-id`.
+- `posts:create` now normalizes `--scheduled-at` to the backend's `YYYY-MM-DD HH:MM:SS` (UTC) format, and gained parity flags `--label` (repeatable, max 20), `--campaign-id`, `--approver` (repeatable) + `--approve-option` + `--approval-notes`, and `--facebook-background-id`. `--publish-type` now also accepts `now`.
+- New workspace write commands: `workspaces:create`, `workspaces:update`, `workspaces:delete`.
+- New label write commands: `labels:create`, `labels:update`, `labels:delete`.
+- New campaign write commands: `campaigns:create`, `campaigns:update`, `campaigns:delete`.
+- New team-member write commands: `team:add`, `team:update`, `team:remove` (with `--confirmed` for guarded removals).
+- All new mutating commands support `--dry-run` and are added to the SKILL.md workspace-confirmation list. Added a `put` method to the API client and nock tests for every new wrapper.
+
 ## 1.0.5 — workspace confirmation before mutations
 
 - SKILL.md: agents must now confirm the target workspace with the user before any mutating command (`accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `posts:create`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`) instead of silently using whatever workspace is active in the CLI.

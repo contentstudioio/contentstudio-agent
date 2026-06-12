@@ -6,9 +6,16 @@ import {
   addBlueskyAccount,
   addComment,
   addFacebookGroup,
+  addTeamMember,
   connectAccount,
+  createCampaign,
+  createLabel,
   createPost,
+  createWorkspace,
+  deleteCampaign,
+  deleteLabel,
   deletePost,
+  deleteWorkspace,
   getMe,
   listAccounts,
   listFacebookTextBackgrounds,
@@ -16,6 +23,11 @@ import {
   listPosts,
   listWorkspaces,
   postApproval,
+  removeTeamMember,
+  updateCampaign,
+  updateLabel,
+  updateTeamMember,
+  updateWorkspace,
   uploadMedia,
 } from "../src/api";
 import { Config } from "../src/config";
@@ -439,5 +451,168 @@ describe("Endpoint wrappers — request shape", () => {
     expect(ctype).toMatch(/multipart\/form-data/);
     expect(bodyText).toContain("example.test");
     expect(bodyText).toContain("f1");
+  });
+});
+
+describe("Workspace write wrappers", () => {
+  it("createWorkspace POSTs /workspaces (not workspace-scoped)", async () => {
+    let received: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces`, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, envelope({ _id: "w-new" }));
+    const body = { name: "Demo", logo: "https://e.com/l.png", timezone: "Asia/Karachi" };
+    await createWorkspace(mkClient(), body);
+    expect(received).toEqual(body);
+  });
+
+  it("updateWorkspace PUTs /workspaces/{id} with the partial body", async () => {
+    let received: any;
+    let method = "";
+    nock(BASE)
+      .put(`${PATH}/workspaces/w1`, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, function () {
+        method = this.req.method;
+        return envelope({ _id: "w1" });
+      });
+    await updateWorkspace(mkClient(), "w1", { name: "Renamed" });
+    expect(method).toBe("PUT");
+    expect(received).toEqual({ name: "Renamed" });
+  });
+
+  it("deleteWorkspace DELETEs /workspaces/{id}", async () => {
+    nock(BASE).delete(`${PATH}/workspaces/w1`).reply(200, envelope([]));
+    await expect(deleteWorkspace(mkClient(), "w1")).resolves.toBeDefined();
+  });
+});
+
+describe("Label write wrappers", () => {
+  it("createLabel POSTs /workspaces/{w}/labels", async () => {
+    let received: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/labels`, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, envelope({ _id: "l1" }));
+    await createLabel(mkClient(), "ws-1", { name: "Promo", color: "color_3" });
+    expect(received).toEqual({ name: "Promo", color: "color_3" });
+  });
+
+  it("updateLabel PUTs /workspaces/{w}/labels/{id}", async () => {
+    let received: any;
+    nock(BASE)
+      .put(`${PATH}/workspaces/ws-1/labels/l1`, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, envelope({ _id: "l1" }));
+    await updateLabel(mkClient(), "ws-1", "l1", { color: "color_5" });
+    expect(received).toEqual({ color: "color_5" });
+  });
+
+  it("deleteLabel DELETEs /workspaces/{w}/labels/{id}", async () => {
+    nock(BASE).delete(`${PATH}/workspaces/ws-1/labels/l1`).reply(200, envelope([]));
+    await expect(deleteLabel(mkClient(), "ws-1", "l1")).resolves.toBeDefined();
+  });
+});
+
+describe("Campaign write wrappers", () => {
+  it("createCampaign POSTs /workspaces/{w}/campaigns", async () => {
+    let received: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/campaigns`, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, envelope({ _id: "c1" }));
+    await createCampaign(mkClient(), "ws-1", { name: "Q1", color: "color_2" });
+    expect(received).toEqual({ name: "Q1", color: "color_2" });
+  });
+
+  it("updateCampaign PUTs /workspaces/{w}/campaigns/{id}", async () => {
+    let received: any;
+    nock(BASE)
+      .put(`${PATH}/workspaces/ws-1/campaigns/c1`, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, envelope({ _id: "c1" }));
+    await updateCampaign(mkClient(), "ws-1", "c1", { name: "Q2" });
+    expect(received).toEqual({ name: "Q2" });
+  });
+
+  it("deleteCampaign DELETEs /workspaces/{w}/campaigns/{id}", async () => {
+    nock(BASE).delete(`${PATH}/workspaces/ws-1/campaigns/c1`).reply(200, envelope([]));
+    await expect(deleteCampaign(mkClient(), "ws-1", "c1")).resolves.toBeDefined();
+  });
+});
+
+describe("Team-member write wrappers", () => {
+  it("addTeamMember POSTs /workspaces/{w}/team-members", async () => {
+    let received: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/team-members`, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, envelope({ _id: "m1" }));
+    const body = { role: "approver", email: "a@b.co" };
+    await addTeamMember(mkClient(), "ws-1", body);
+    expect(received).toEqual(body);
+  });
+
+  it("updateTeamMember PUTs /workspaces/{w}/team-members/{member_id}", async () => {
+    let received: any;
+    nock(BASE)
+      .put(`${PATH}/workspaces/ws-1/team-members/m1`, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, envelope({ _id: "m1" }));
+    const body = { role: "collaborator", permissions: { addSocial: true } };
+    await updateTeamMember(mkClient(), "ws-1", "m1", body);
+    expect(received).toEqual(body);
+  });
+
+  it("removeTeamMember DELETEs without confirmed by default", async () => {
+    let qs: any = {};
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/team-members/m1`)
+      .query((q) => {
+        qs = q;
+        return true;
+      })
+      .reply(200, envelope([]));
+    await removeTeamMember(mkClient(), "ws-1", "m1");
+    expect(qs.confirmed).toBeUndefined();
+  });
+
+  it("removeTeamMember appends ?confirmed=true when confirmed", async () => {
+    let qs: any = {};
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/team-members/m1`)
+      .query((q) => {
+        qs = q;
+        return true;
+      })
+      .reply(200, envelope([]));
+    await removeTeamMember(mkClient(), "ws-1", "m1", { confirmed: true });
+    expect(qs.confirmed).toBe("true");
+  });
+
+  it("422 REQUIRES_REMOVAL_CONFIRMATION surfaces as ValidationError", async () => {
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/team-members/m1`)
+      .query(true)
+      .reply(422, { message: "confirmation required", error_code: "REQUIRES_REMOVAL_CONFIRMATION" });
+    await expect(removeTeamMember(mkClient(), "ws-1", "m1")).rejects.toBeInstanceOf(
+      ValidationError,
+    );
   });
 });
