@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.9 — add Threads, Tumblr, and Bluesky to the skill description
+
+- SKILL.md: the `description` now lists Threads, Tumblr, and Bluesky alongside the existing platforms. The CLI already supports connecting these (`accounts:connect threads`, `accounts:connect tumblr`, `accounts:add-bluesky`), but the one-line summary had drifted and only advertised the original headline set.
+- No CLI source changes — platform support is unchanged; this only corrects the skill's discoverability/summary text.
+
 ## 1.0.8 — document env-var authentication for headless/agent runtimes
 
 - SKILL.md: the Authentication section now documents **two** auth paths — `auth:login --api-key` (interactive, config file) and `export CONTENTSTUDIO_API_KEY` (headless / agent runtimes, env var). The env var takes precedence over the config file.
