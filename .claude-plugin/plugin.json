@@ -1,7 +1,7 @@
 {
   "name": "contentstudio",
   "version": "1.0.0",
-  "description": "Social-media automation CLI for scheduling posts, managing media, accounts, comments, and approvals across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, and Google Business Profile via the ContentStudio API.",
+  "description": "Social-media automation CLI for scheduling posts, managing media, accounts, comments, and approvals across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile via the ContentStudio API.",
   "author": {
     "name": "ContentStudio",
     "url": "https://contentstudio.io"
@@ -23,6 +23,9 @@
     "tiktok",
     "youtube",
     "pinterest",
-    "gmb"
+    "gmb",
+    "threads",
+    "tumblr",
+    "bluesky"
   ]
 }

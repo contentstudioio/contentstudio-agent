@@ -1,7 +1,7 @@
 {
   "name": "contentstudio-cli",
   "version": "1.0.9",
-  "description": "ContentStudio CLI — schedule social-media posts, manage media, accounts, comments, and approvals across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, and Google Business Profile via the ContentStudio API.",
+  "description": "ContentStudio CLI — schedule social-media posts, manage media, accounts, comments, and approvals across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile via the ContentStudio API.",
   "main": "dist/index.js",
   "bin": {
     "contentstudio": "./dist/index.js"
@@ -36,7 +36,10 @@
     "tiktok",
     "youtube",
     "pinterest",
-    "gmb"
+    "gmb",
+    "threads",
+    "tumblr",
+    "bluesky"
   ],
   "author": "ContentStudio",
   "license": "MIT",
