@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.8 — document env-var authentication for headless/agent runtimes
+
+- SKILL.md: the Authentication section now documents **two** auth paths — `auth:login --api-key` (interactive, config file) and `export CONTENTSTUDIO_API_KEY` (headless / agent runtimes, env var). The env var takes precedence over the config file.
+- Added a headless-deployment note: a shell `export` does not persist to a service process; set `CONTENTSTUDIO_API_KEY` via systemd `Environment=`/`EnvironmentFile=`, Docker `-e`, etc., then restart. Runtimes that gate on `requires.env` (e.g. OpenClaw) stay blocked until the variable is present in the process environment.
+- Resolves a docs/metadata mismatch: the frontmatter already declared `requires.env: CONTENTSTUDIO_API_KEY`, but the body only documented `auth:login`, so OpenClaw operators were left blocked with no instruction on how to satisfy the gate.
+- No CLI source-code changes — the CLI already reads `CONTENTSTUDIO_API_KEY` from the environment (`src/config.ts`).
+
 ## 1.0.5 — workspace confirmation before mutations
 
 - SKILL.md: agents must now confirm the target workspace with the user before any mutating command (`accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `posts:create`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`) instead of silently using whatever workspace is active in the CLI.

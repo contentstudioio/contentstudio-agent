@@ -1,6 +1,7 @@
 ---
 name: contentstudio
 description: ContentStudio is a tool to schedule social-media posts across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, and Google Business Profile. Use when the user wants to list/create/delete/approve posts, manage media, or audit workspaces, accounts, campaigns, labels, categories, or team-members on their ContentStudio account.
+version: 1.0.8
 homepage: https://api.contentstudio.io/guide
 metadata: {"openclaw":{"emoji":"📅","requires":{"bins":["contentstudio"],"env":["CONTENTSTUDIO_API_KEY"]}}}
 ---
@@ -38,11 +39,21 @@ Before doing anything else, check auth status:
 contentstudio auth:status
 ```
 
-If `has_api_key` is `false`, ask the user for their ContentStudio API key. They can generate one from **ContentStudio Dashboard → Settings → API Keys**. Then:
+If `has_api_key` is `false`, authenticate one of two ways. The user can generate a key from **ContentStudio Dashboard → Settings → API Keys**.
+
+1. **API key (interactive)** — stores the key in the CLI config file:
 
 ```bash
 contentstudio auth:login --api-key cs_...
 ```
+
+2. **Environment variable (headless / agent runtimes)** — the CLI reads `CONTENTSTUDIO_API_KEY` from the environment and it takes precedence over the config file:
+
+```bash
+export CONTENTSTUDIO_API_KEY=cs_...
+```
+
+> **Headless deployment note (OpenClaw, CI, daemons):** a shell `export` does **not** persist to a service process. Set `CONTENTSTUDIO_API_KEY` in the agent's actual environment — e.g. systemd `Environment=` (`systemctl edit`), an `EnvironmentFile=`, or Docker `-e` / compose `environment:` — then restart the service. Runtimes that gate on declared requirements (e.g. OpenClaw's `requires.env`) will stay blocked until this variable is present in the process environment.
 
 Then verify a workspace is selected:
 
