@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.10 — propagate platform-name metadata to the npm package
+
+- Release-only bump. The `package.json`/`plugin.json` description + keywords were updated to include Threads, Tumblr, and Bluesky *after* `1.0.9` had already been published to npm, so npm's `1.0.9` carried the old description and the follow-up deploy failed (`403`, can't republish an existing version). This bump ships the corrected package metadata to npm.
+- No CLI source or SKILL.md content changes beyond the version bump.
+
 ## 1.0.9 — add Threads, Tumblr, and Bluesky to the skill description
 
 - SKILL.md: the `description` now lists Threads, Tumblr, and Bluesky alongside the existing platforms. The CLI already supports connecting these (`accounts:connect threads`, `accounts:connect tumblr`, `accounts:add-bluesky`), but the one-line summary had drifted and only advertised the original headline set.

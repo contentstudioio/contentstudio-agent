@@ -1,7 +1,7 @@
 ---
 name: contentstudio
 description: ContentStudio is a tool to schedule social-media posts across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile. Use when the user wants to list/create/delete/approve posts, manage media, or audit workspaces, accounts, campaigns, labels, categories, or team-members on their ContentStudio account.
-version: 1.0.9
+version: 1.0.10
 homepage: https://api.contentstudio.io/guide
 metadata: {"openclaw":{"emoji":"📅","requires":{"bins":["contentstudio"],"env":["CONTENTSTUDIO_API_KEY"]}}}
 ---
