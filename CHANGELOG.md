@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.10 — propagate platform-name metadata to the npm package
+
+- Release-only bump. The `package.json`/`plugin.json` description + keywords were updated to include Threads, Tumblr, and Bluesky *after* `1.0.9` had already been published to npm, so npm's `1.0.9` carried the old description and the follow-up deploy failed (`403`, can't republish an existing version). This bump ships the corrected package metadata to npm.
+- No CLI source or SKILL.md content changes beyond the version bump.
+
+## 1.0.9 — add Threads, Tumblr, and Bluesky to the skill description
+
+- SKILL.md: the `description` now lists Threads, Tumblr, and Bluesky alongside the existing platforms. The CLI already supports connecting these (`accounts:connect threads`, `accounts:connect tumblr`, `accounts:add-bluesky`), but the one-line summary had drifted and only advertised the original headline set.
+- No CLI source changes — platform support is unchanged; this only corrects the skill's discoverability/summary text.
+
+## 1.0.8 — document env-var authentication for headless/agent runtimes
+
+- SKILL.md: the Authentication section now documents **two** auth paths — `auth:login --api-key` (interactive, config file) and `export CONTENTSTUDIO_API_KEY` (headless / agent runtimes, env var). The env var takes precedence over the config file.
+- Added a headless-deployment note: a shell `export` does not persist to a service process; set `CONTENTSTUDIO_API_KEY` via systemd `Environment=`/`EnvironmentFile=`, Docker `-e`, etc., then restart. Runtimes that gate on `requires.env` (e.g. OpenClaw) stay blocked until the variable is present in the process environment.
+- Resolves a docs/metadata mismatch: the frontmatter already declared `requires.env: CONTENTSTUDIO_API_KEY`, but the body only documented `auth:login`, so OpenClaw operators were left blocked with no instruction on how to satisfy the gate.
+- No CLI source-code changes — the CLI already reads `CONTENTSTUDIO_API_KEY` from the environment (`src/config.ts`).
+
 ## Unreleased — write commands for workspaces/labels/campaigns/team + posts:create fixes
 
 - Fixed `posts:create`: now emits top-level `content_category_id` and no longer forces `--account` when `--content-category-id` is supplied (content-category posts derive accounts from the category — previously 422'd). Added `--content-category-id`.
