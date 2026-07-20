@@ -135,6 +135,234 @@ describe("--dry-run paths never hit the network", () => {
     expect(data.data.body.scheduling.publish_type).toBe("draft");
   });
 
+  it("posts:create --dry-run with --facebook-carousel builds carousel block", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "Shop",
+        "-i",
+        "fb1",
+        "-t",
+        "draft",
+        "--facebook-background-id",
+        "bg99",
+        "--facebook-carousel",
+        '{"cards":[{"image":"https://e.com/1.jpg","link":"https://e.com/p1"},{"image":"https://e.com/2.jpg","link":"https://e.com/p2"}],"call_to_action":"SHOP_NOW","end_card":true}',
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(true);
+    const fb = data.data.body.facebook_options;
+    // --facebook-background-id must survive alongside the carousel.
+    expect(fb.facebook_background_id).toBe("bg99");
+    expect(fb.carousel.is_carousel_post).toBe(true);
+    expect(fb.carousel.cards).toHaveLength(2);
+    expect(fb.carousel.call_to_action).toBe("SHOP_NOW");
+  });
+
+  it("posts:create --dry-run with --threads builds multi_threads block", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "Thread",
+        "-i",
+        "th1",
+        "-t",
+        "draft",
+        "--threads",
+        '[{"message":"part 1"},{"message":"part 2","media":["https://e.com/v.mp4"]},{"message":"part 3"}]',
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(true);
+    const th = data.data.body.threads_options;
+    expect(th.has_multi_threads).toBe(true);
+    expect(th.multi_threads).toHaveLength(3);
+    expect(th.multi_threads[1].media).toEqual(["https://e.com/v.mp4"]);
+  });
+
+  it("posts:create --dry-run with --twitter builds threaded_tweets block", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "Tw",
+        "-i",
+        "tw1",
+        "-t",
+        "draft",
+        "--twitter",
+        '[{"message":"1/ hello"},{"message":"2/ pic","media":["https://e.com/x.jpg"]},{"message":"3/ end"}]',
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(true);
+    const tw = data.data.body.twitter_options;
+    expect(tw.has_threaded_tweets).toBe(true);
+    expect(tw.threaded_tweets).toHaveLength(3);
+    expect(tw.threaded_tweets[1].media).toEqual(["https://e.com/x.jpg"]);
+  });
+
+  it("posts:create --twitter invalid JSON emits ConfigError", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "x",
+        "-i",
+        "tw1",
+        "-t",
+        "draft",
+        "--twitter",
+        "[bad json",
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).not.toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(false);
+    expect(data.error.type).toBe("ConfigError");
+  });
+
+  it("posts:create --dry-run with --first-comment builds first_comment block", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "Post",
+        "-i",
+        "a1",
+        "-t",
+        "draft",
+        "--first-comment",
+        "link in bio",
+        "--first-comment-account",
+        "a1",
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(true);
+    expect(data.data.body.first_comment).toEqual({
+      message: "link in bio",
+      accounts: ["a1"],
+    });
+  });
+
+  it("posts:create --first-comment without accounts omits accounts key (backend 422s)", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "Post",
+        "-i",
+        "a1",
+        "-t",
+        "draft",
+        "--first-comment",
+        "link in bio",
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(true);
+    expect(data.data.body.first_comment).toEqual({ message: "link in bio" });
+  });
+
+  it("posts:create --facebook-carousel invalid JSON emits ConfigError", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "x",
+        "-i",
+        "fb1",
+        "-t",
+        "draft",
+        "--facebook-carousel",
+        "{bad json",
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).not.toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(false);
+    expect(data.error.type).toBe("ConfigError");
+  });
+
   it("posts:delete --dry-run no network", () => {
     fs.writeFileSync(
       cfgFile,

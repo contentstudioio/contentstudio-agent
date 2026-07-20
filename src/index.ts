@@ -15,6 +15,7 @@ import { hideBin } from "yargs/helpers";
 import { VERSION } from "./api";
 import { registerAuth } from "./commands/auth";
 import { registerComments } from "./commands/comments";
+import { registerCrud } from "./commands/crud";
 import { registerConnect } from "./commands/connect";
 import { registerFacebook } from "./commands/facebook";
 import { registerLookups } from "./commands/lookups";
@@ -55,6 +56,7 @@ let cli = yargs(hideBin(process.argv))
 cli = registerAuth(cli);
 cli = registerWorkspaces(cli);
 cli = registerLookups(cli);
+cli = registerCrud(cli);
 cli = registerConnect(cli);
 cli = registerFacebook(cli);
 cli = registerMedia(cli);

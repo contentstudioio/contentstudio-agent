@@ -224,6 +224,11 @@ Options:
 | `--video-url` | External video URL |
 | `--media-id` | ID of media in your library (from `media:list`). Repeatable. |
 | `--post-type` | `feed` \| `reel` \| `story` \| `feed+reel` \| `feed+story` \| `feed+reel+story` \| `carousel` \| `carousel+story` \| `video` \| `shorts` |
+| `--facebook-carousel '<json>'` | Facebook carousel (Facebook accounts only): JSON object `{cards:[{image,link,title?,description?}], call_to_action?, end_card?, end_card_url?, accounts?}`. 2–10 cards. CLI adds `is_carousel_post:true`. |
+| `--threads '<json>'` | Threads multi-thread (Threads accounts only): JSON array `[{message, media?, media_ids?}]`. Max 10 items. CLI adds `has_multi_threads:true`. |
+| `--twitter '<json>'` | Twitter/X threaded tweets (Twitter accounts only): JSON array `[{message, media?, media_ids?}]`. Max 10 tweets. CLI adds `has_threaded_tweets:true`. No mixed media per tweet (no images+video together), max 1 video per tweet. |
+| `--first-comment "<message>"` | First comment (≤2000 chars). Build `first_comment:{message, accounts?}`. Requires `--first-comment-account`. |
+| `--first-comment-account <id>` | Account for the first comment. Repeatable. Must be a subset of `--account`; backend 422s if omitted when `--first-comment` is set. |
 | `--dry-run` | Print the body that would be POSTed and exit (no API call) |
 
 ### Multi-account post
@@ -252,6 +257,80 @@ contentstudio posts:create \
   -t draft \
   --media-id <media_library_id>
 ```
+
+### Queued post (added to the publishing queue; no explicit time)
+
+```bash
+contentstudio posts:create \
+  -c "Filler post for the queue" \
+  -i <account_id> \
+  -t queued
+```
+
+`scheduled_at` is optional for `queued` — the backend slots it into the workspace queue automatically.
+
+### Content-category post (accounts come from the category — no `-i`)
+
+```bash
+# Find a category id first:
+contentstudio --json categories:list
+
+# --content-category-id is required for -t content_category; accounts are derived from the category:
+contentstudio posts:create \
+  -c "Evergreen tip of the day" \
+  -t content_category \
+  --content-category-id <category_id>
+```
+
+### Facebook carousel (2–10 cards, Facebook accounts only)
+
+```bash
+contentstudio --json posts:create --dry-run \
+  -c "Shop the new collection" \
+  -i <facebook_account_id> \
+  -t scheduled \
+  -s "2026-07-01 10:00:00" \
+  --facebook-carousel '{"cards":[{"image":"https://e.com/1.jpg","link":"https://e.com/p1","title":"Tee"},{"image":"https://e.com/2.jpg","link":"https://e.com/p2","title":"Hoodie"}],"call_to_action":"SHOP_NOW","end_card":true,"end_card_url":"https://e.com/shop"}'
+```
+
+The CLI parses the JSON locally and adds `is_carousel_post: true`. A carousel and a colored-background text post (`--facebook-background-id`) are different Facebook formats — use one or the other, not both in the same post. CTA values (33 total) include `SHOP_NOW`, `LEARN_MORE`, `BUY_NOW`, `SIGN_UP`, … (see `SKILL.md` for the full list). The backend validates card counts and CTA values.
+
+### Threads multi-thread (chained, max 10 items, Threads accounts only)
+
+```bash
+contentstudio --json posts:create --dry-run \
+  -c "🧵 A thread on shipping CLIs" \
+  -i <threads_account_id> \
+  -t draft \
+  --threads '[{"message":"1/ Start small."},{"message":"2/ Ship a demo.","media":["https://e.com/demo.mp4"]},{"message":"3/ Iterate in public."}]'
+```
+
+The top-level `-c / --content` is the lead post; each `--threads` item is a chained reply, in order (don't repeat the lead text in the items). The CLI parses the JSON array locally and sets `has_multi_threads: true`. Each item needs `message` or `media`; Threads allows mixed media.
+
+### Twitter/X threaded tweets (chained, max 10 tweets, Twitter accounts only)
+
+```bash
+contentstudio --json posts:create --dry-run \
+  -c "Why we built a CLI 🧵" \
+  -i <twitter_account_id> \
+  -t draft \
+  --twitter '[{"message":"1/ Start with the contract."},{"message":"2/ Show, don'\''t tell.","media":["https://e.com/x.jpg"]},{"message":"3/ Ship it."}]'
+```
+
+The top-level `-c / --content` is the lead tweet; each `--twitter` item is a follow-up tweet in the chain, in order (don't repeat the lead text in the items). The CLI parses the JSON array locally and sets `has_threaded_tweets: true`. Each item needs `message` or `media`. Unlike Threads, Twitter does **not** allow mixed media in one tweet (no images + video together) and allows **max 1 video per tweet** — the backend enforces this and returns a 422 if violated.
+
+### Post with a first comment
+
+```bash
+contentstudio --json posts:create --dry-run \
+  -c "New drop is live 🎉" \
+  -i <account_id> \
+  -t draft \
+  --first-comment "🔗 link in bio" \
+  --first-comment-account <account_id>
+```
+
+The CLI builds `first_comment: { message, accounts }`. `--first-comment-account` is **required** by the backend when `--first-comment` is set and must be a subset of the `-i / --account` IDs; otherwise the API returns a 422.
 
 ### Full body via `--body <file.json>`
 
@@ -290,6 +369,10 @@ Body schema:
     "approve_option": "anyone",
     "notes": "please review"
   },
+  // facebook_options: use EITHER carousel OR facebook_background_id (different FB formats, not both):
+  "facebook_options":  { "carousel": { "is_carousel_post": true, "cards": [ {"image":"https://...","link":"https://...","title":"...","description":"..."} ], "call_to_action": "SHOP_NOW", "end_card": true, "end_card_url": "https://..." } },
+  // colored-background text post instead: "facebook_options": { "facebook_background_id": "<id>" },
+  "threads_options":   { "has_multi_threads": true, "multi_threads": [ {"message":"1/ ..."}, {"message":"2/ ...","media":["https://...mp4"]} ] },
   "youtube_options":   { "title": "...", "privacy_status": "public", "category": "EDUCATION", "tags": ["tag1"], "license": "youtube", "made_for_kids": false },
   "tiktok_options":    { "privacy_level": "PUBLIC_TO_EVERYONE", "disable_comment": false, "disable_duet": false, "disable_stitch": false, "auto_add_music": false },
   "pinterest_options": { "title": "...", "link": "https://..." },
