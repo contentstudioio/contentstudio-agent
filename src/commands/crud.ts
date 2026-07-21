@@ -15,6 +15,7 @@ import {
   createLabel,
   deleteCampaign,
   deleteLabel,
+  removeAccount,
   removeTeamMember,
   updateCampaign,
   updateLabel,
@@ -54,7 +55,7 @@ function parseJsonOption(raw: unknown, flag: string): Record<string, unknown> {
 }
 
 export function registerCrud<T>(yargs: Argv<T>): Argv<T> {
-  return registerTeam(registerCampaigns(registerLabels(yargs)));
+  return registerAccounts(registerTeam(registerCampaigns(registerLabels(yargs))));
 }
 
 function registerLabels<T>(yargs: Argv<T>): Argv<T> {
@@ -333,4 +334,30 @@ function registerTeam<T>(yargs: Argv<T>): Argv<T> {
         out.emitSuccess(data, g, () => out.success(`Removed team member ${mid}.`));
       }),
     );
+}
+
+function registerAccounts<T>(yargs: Argv<T>): Argv<T> {
+  return yargs.command(
+    "accounts:remove <account_id>",
+    "Remove (disconnect) a social account. account_id is the account's _id from accounts:list. Requires the save_social permission.",
+    (y) =>
+      y
+        .positional("account_id", { type: "string", demandOption: true })
+        .option("dry-run", { type: "boolean", default: false }),
+    run(async (argv: any, g) => {
+      const { cfg, client } = buildClient(g);
+      const wid = resolveWorkspace(cfg, g);
+      const aid = String(argv.account_id);
+      if (argv["dry-run"] ?? argv.dryRun) {
+        return emitDryRun(
+          g,
+          `DELETE /workspaces/${wid}/accounts/${aid}`,
+          {},
+          `remove account ${aid}`,
+        );
+      }
+      const data = await removeAccount(client, wid, aid);
+      out.emitSuccess(data, g, () => out.success(`Removed account ${aid}.`));
+    }),
+  );
 }

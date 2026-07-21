@@ -18,14 +18,17 @@ import {
   deleteWorkspace,
   getMe,
   listAccounts,
+  listApprovalWorkflows,
   listFacebookTextBackgrounds,
   listPlatforms,
   listPosts,
   listWorkspaces,
   postApproval,
+  removeAccount,
   removeTeamMember,
   updateCampaign,
   updateLabel,
+  updatePost,
   updateTeamMember,
   updateWorkspace,
   uploadMedia,
@@ -346,6 +349,45 @@ describe("Endpoint wrappers — request shape", () => {
     expect(received).toEqual(body);
   });
 
+  it("updatePost PUTs /workspaces/{w}/posts/{id} with the body verbatim", async () => {
+    const body = {
+      content: { text: "edited" },
+      accounts: ["a1"],
+      scheduling: { publish_type: "draft" },
+      linkedin_options: { title: "New title" },
+      approval_workflow: { workflow_action: "restart", notes: "please re-review" },
+    };
+    let received: any;
+    let method = "";
+    nock(BASE)
+      .put(`${PATH}/workspaces/ws-1/posts/p1`, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, function () {
+        method = this.req.method;
+        return envelope({ id: "p1", post_url: null });
+      });
+
+    await updatePost(mkClient(), "ws-1", "p1", body);
+    expect(method).toBe("PUT");
+    expect(received).toEqual(body);
+  });
+
+  it("listApprovalWorkflows GETs /workspaces/{w}/approval-workflows", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/approval-workflows`)
+      .query(true)
+      .reply(
+        200,
+        envelope([
+          { _id: "wf1", name: "Legal", is_default: true, levels: [] },
+        ]),
+      );
+    const resp = await listApprovalWorkflows(mkClient(), "ws-1");
+    expect((resp.data as any[])[0]._id).toBe("wf1");
+  });
+
   it("deletePost without flags sends empty body", async () => {
     let received: any = "UNSET";
     nock(BASE)
@@ -614,5 +656,23 @@ describe("Team-member write wrappers", () => {
     await expect(removeTeamMember(mkClient(), "ws-1", "m1")).rejects.toBeInstanceOf(
       ValidationError,
     );
+  });
+});
+
+describe("Account write wrappers", () => {
+  it("removeAccount DELETEs /workspaces/{w}/accounts/{account_id}", async () => {
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/accounts/a1`)
+      .reply(200, envelope([]));
+    await expect(removeAccount(mkClient(), "ws-1", "a1")).resolves.toBeDefined();
+  });
+
+  it("removeAccount 404 surfaces as NotFoundError", async () => {
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/accounts/missing`)
+      .reply(404, { message: "not found", error_code: "ACCOUNT_NOT_FOUND" });
+    await expect(
+      removeAccount(mkClient(), "ws-1", "missing"),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

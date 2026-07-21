@@ -84,7 +84,7 @@ contentstudio workspaces:use <workspace_id>
 
 The CLI silently defaults to the active workspace (whatever was set by `workspaces:use`). That default is fine for **read-only** calls (`workspaces:list`, `accounts:list`, `posts:list`, `media:list`, etc.) — just use the active workspace.
 
-But for any **mutating** action — `accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `posts:create`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`, `workspaces:update`, `workspaces:delete`, `labels:create`, `labels:update`, `labels:delete`, `campaigns:create`, `campaigns:update`, `campaigns:delete`, `team:add`, `team:update`, `team:remove` — you MUST confirm the workspace with the user first, even if a workspace is already active. Don't assume the active workspace is the one they want to mutate.
+But for any **mutating** action — `accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `posts:create`, `posts:update`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`, `workspaces:update`, `workspaces:delete`, `labels:create`, `labels:update`, `labels:delete`, `campaigns:create`, `campaigns:update`, `campaigns:delete`, `team:add`, `team:update`, `team:remove`, `accounts:remove` — you MUST confirm the workspace with the user first, even if a workspace is already active. Don't assume the active workspace is the one they want to mutate.
 
 (`workspaces:create` is the one write that is **not** workspace-scoped — it creates a brand-new workspace and ignores the active one.)
 
@@ -169,7 +169,7 @@ Did the user say "all" / "every" / "complete list" / "every single"?
 ### Endpoints that paginate
 
 All `*:list` commands paginate:
-`workspaces:list`, `accounts:list`, `posts:list`, `comments:list`, `media:list`, `campaigns:list`, `categories:list`, `labels:list`, `team:list`.
+`workspaces:list`, `accounts:list`, `posts:list`, `comments:list`, `media:list`, `campaigns:list`, `categories:list`, `labels:list`, `team:list`, `approval-workflows:list`.
 
 Non-list commands (`auth:whoami`, `posts:create`, `posts:delete`, `media:upload`, etc.) never include `pagination` in their envelope.
 
@@ -217,6 +217,7 @@ All commands are invoked as `contentstudio <group>:<command>`.
 | `accounts:connect <platform> --reconnect --account-id <id>` | Refresh an expired/invalid account |
 | `accounts:add-bluesky --handle <h> --app-password <p>` | Connect a Bluesky account (no browser — uses app password) |
 | `accounts:add-facebook-group --name <n> [--image <url>]` | Manually add a Facebook Group connection |
+| `accounts:remove <account_id>` | Remove (disconnect) a social account. `account_id` is the account's `_id` from `accounts:list`. Requires the `save_social` permission (403 otherwise). |
 
 `--platform` values for `accounts:list` filter: `facebook`, `linkedin`, `twitter`, `instagram`, `youtube`, `tiktok`, `pinterest`, `gmb`.
 
@@ -239,23 +240,36 @@ All commands are invoked as `contentstudio <group>:<command>`.
 | `posts:create -c "text" -i <threads_account> -t draft --threads '<json>'` | Create a Threads multi-thread (chained) post (max 10 items) |
 | `posts:create -c "text" -i <twitter_account> -t draft --twitter '<json>'` | Create a Twitter/X threaded-tweet post (max 10 tweets) |
 | `posts:create -c "text" -i <account> -t draft --first-comment "..." --first-comment-account <id>` | Create a post with a first comment |
+| `posts:create -c "text" -i <linkedin_account> -t draft --post-type poll --linkedin-options '<json>'` | Create a LinkedIn poll post (text-only) |
 | `posts:create --body /path/to/body.json` | Create a post with full JSON body |
+| `posts:update <post_id> [same flags as posts:create]` | Update an existing post (same body). Rejected (422) once the post is published/processing |
 | `posts:delete <post_id> [--delete-from-social]` | Delete a post |
 | `posts:approve <post_id> [--comment "..."]` | Approve a pending post |
 | `posts:reject <post_id> [--comment "..."]` | Reject a pending post |
 
 `-t / --publish-type` values: `scheduled`, `draft`, `queued`, `content_category`.
 
-**`posts:create` shortcut-mode flags:**
+`posts:update <post_id>` takes the **exact same flags and body** as `posts:create` (both `--body` and shortcut mode) — it PUTs to `/workspaces/{w}/posts/{post_id}`. The backend allows the update only while the post's status is **not** `published` or `processing` (otherwise it returns 422). Use `--approval-workflow-action` (below) on update to change an already-attached workflow.
+
+**`posts:create` / `posts:update` shortcut-mode flags:**
 - `-c / --content` (required) — post text.
 - `-i / --account <id>` (repeatable) — account ID(s) to post to. **Required UNLESS `--content-category-id` is given.**
 - `--content-category-id <id>` — sets top-level `content_category_id`. **Required by the backend when `--publish-type content_category`.** When set, accounts are derived from the category, so `--account` is not required (and may be omitted). Use this instead of `--account` for content-category posts.
 - `-s / --scheduled-at "YYYY-MM-DD HH:MM:SS"` — scheduling time (UTC). The CLI normalizes any parseable date to `YYYY-MM-DD HH:MM:SS` (the backend's required `date_format`).
 - `-m / --image-url <url>` (repeatable), `--video-url <url>`, `--media-id <id>` (repeatable) — media.
-- `--post-type <type>` — e.g. `feed`, `reel`, `carousel`, `story`, …
+- `--post-type <type>` — e.g. `feed`, `reel`, `carousel`, `story`, `poll`. A **carousel** is auto-derived by the backend when `post_type=carousel` and 2+ images are attached. A **poll** requires `--post-type poll` **and** a text-only `--linkedin-options` poll block (no media).
 - `--label <id>` (repeatable, max 20) → `labels`.
 - `--campaign-id <id>` → `campaign_id`.
-- `--approver <user_id>` (repeatable) + `--approve-option anyone|everyone` (default `anyone`) + `--approval-notes "..."` → builds `approval: {approvers, approve_option, notes}` only when at least one approver is given. The post creator cannot be an approver. `anyone` = any single approver; `everyone` = all must approve.
+- `--linkedin-options '<json>'` → `linkedin_options` (**LinkedIn accounts**). Pass a JSON **object**; the CLI parses it locally (invalid JSON → `ConfigError`) and sends it verbatim.
+  - Shape: `{ "title"?: <string>, "poll"?: { "question": <≤140>, "options": <string[2..4], each ≤30>, "duration": "ONE_DAY" | "THREE_DAYS" | "SEVEN_DAYS" | "FOURTEEN_DAYS" } }`
+  - A **poll** must be paired with `--post-type poll` and text-only content (no images/video). Backend validates and 422s on violations.
+- `--facebook-collaborator <user_id>` (repeatable, **max 10**) → `facebook_options.collaborators` (Facebook accounts). Merges with `--facebook-carousel` / `--facebook-background-id`.
+- `--instagram-collaborator <user_id>` (repeatable, **max 3**) → `instagram_options.collaborators` (Instagram accounts).
+- **Approval — two mutually-exclusive systems (pass only one):**
+  - **Legacy** `--approver <user_id>` (repeatable) + `--approve-option anyone|everyone` (default `anyone`) + `--approval-notes "..."` → builds `approval: {approvers, approve_option, notes}` only when at least one approver is given. The post creator cannot be an approver. `anyone` = any single approver; `everyone` = all must approve.
+  - **Workflow** `--approval-workflow-id <id>` + `--approval-workflow-notes "..."` → `approval_workflow: {workflow_id, notes?}` — ATTACH a workflow (works on both create and update). Get the id from `approval-workflows:list` (its `_id`).
+  - **Workflow (update only)** `--approval-workflow-action restart|resume|renotify_current|keep|remove` + `--approval-workflow-notes "..."` → `approval_workflow: {workflow_action, notes?}` — mutate the already-attached workflow. Only valid on `posts:update`.
+  - **Exactly one** of `--approval-workflow-id` / `--approval-workflow-action`, and `--approver` cannot be combined with either `--approval-workflow-*` flag. The CLI errors locally (`ConfigError`) if these rules are broken.
 - `--facebook-background-id <id>` → `facebook_options.facebook_background_id` (plain-text Facebook posts only; rejected if media is attached). Get a valid id from `facebook:text-backgrounds`.
 - `--facebook-carousel '<json>'` → `facebook_options.carousel` (**Facebook accounts only**). Pass a JSON **object**; the CLI parses it locally (invalid JSON → `ConfigError`) and adds `is_carousel_post: true`. It **merges** with `--facebook-background-id` (neither clobbers the other). The backend validates card counts/CTA/limits and returns a 422 if they're wrong.
   - Shape: `{ "cards": [ { "image": <url, required>, "link": <url, required>, "title"?: <≤255>, "description"?: <≤1000> } ], "call_to_action"?, "end_card"?: <bool>, "end_card_url"?: <url>, "accounts"?: <string[]> }`
@@ -270,7 +284,9 @@ All commands are invoked as `contentstudio <group>:<command>`.
 - `--first-comment "<message>"` → `first_comment` (≤2000 chars). The CLI builds `first_comment: { message, accounts? }`. The accounts are supplied with `--first-comment-account <id>` (repeatable).
   - `--first-comment-account <id>` (repeatable) → `first_comment.accounts`. **The backend REQUIRES at least one account when a `--first-comment` message is given, and the accounts must be a subset of the post's main `--account` IDs.** The CLI does not hard-block client-side — if you omit `--first-comment-account`, the backend returns a 422.
 
-(`--facebook-carousel`, `--threads`, and `--twitter` only apply in shortcut mode. The `--body` JSON mode already supports `facebook_options.carousel`, `threads_options`, `twitter_options`, and `first_comment` natively — use it for posts that mix multiple platform option blocks.)
+(`--facebook-carousel`, `--facebook-collaborator`, `--instagram-collaborator`, `--linkedin-options`, `--threads`, and `--twitter` only apply in shortcut mode. The `--body` JSON mode already supports `facebook_options` (carousel + collaborators), `instagram_options.collaborators`, `linkedin_options`, `threads_options`, `twitter_options`, `first_comment`, `approval`, and `approval_workflow` natively — use it for posts that mix multiple platform option blocks.)
+
+The `posts:list` payload now includes `linkedin_options` and `approval_workflow` per post (in addition to the existing fields) — they surface automatically in the `--json` output.
 
 ### Comments / Internal notes
 
@@ -295,6 +311,9 @@ All commands are invoked as `contentstudio <group>:<command>`.
 | `categories:list` | List content categories |
 | `labels:list` | List labels |
 | `team:list` | List workspace team members |
+| `approval-workflows:list` | List approval workflows (use an item's `_id` as `--approval-workflow-id`) |
+
+Each `approval-workflows:list` item is `{ _id, name, is_default, levels: [{ level_number, title, rule, members: [{ user_id }] }] }`. Use `_id` as `posts:create` / `posts:update`'s `--approval-workflow-id`.
 
 ### Labels (write)
 
@@ -335,6 +354,17 @@ For labels and campaigns: `--name` ≤100 chars; `--color` is one of the enum va
   - **Blog arrays** (any role; not existence-validated): `wordpress`, `medium`, `shopify`, `webflow`.
   - **content_categories** (any role; must be real category IDs in the workspace, else 422): array of content-category IDs.
 - `team:remove`: if the member is in approval workflows / in-flight posts, the backend returns error_code `REQUIRES_REMOVAL_CONFIRMATION` (422) — re-run with `--confirmed` (sends `?confirmed=true`) to proceed. 404 = `TEAM_MEMBER_NOT_FOUND`.
+
+### Social accounts (write)
+
+| Command | Purpose |
+|---------|---------|
+| `accounts:remove <account_id> [--dry-run]` | Remove (disconnect) a social account (`DELETE /workspaces/{w}/accounts/{account_id}`) |
+
+- `account_id` is the account's `_id` from `accounts:list`.
+- Requires the `save_social` permission — callers without it get 403.
+- Errors: 401 (bad/missing API key), 403 (missing `save_social`), 404 (account not found in the workspace), 422 (removal failed). Success is 200 with an empty `data` array.
+- Mutating command — preview with `--dry-run` and confirm the workspace first.
 
 ### Facebook helpers
 

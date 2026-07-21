@@ -413,6 +413,36 @@ export function createPost(c: Client, workspaceId: string, body: unknown) {
   return c.post<any>(`/workspaces/${workspaceId}/posts`, { json: body });
 }
 
+/**
+ * PUT /workspaces/{w}/posts/{post_id} — update an existing post. Takes the
+ * same body schema as createPost. The backend rejects updates (422) when the
+ * post status is `published` or `processing`.
+ */
+export function updatePost(
+  c: Client,
+  workspaceId: string,
+  postId: string,
+  body: unknown,
+) {
+  return c.put<any>(`/workspaces/${workspaceId}/posts/${postId}`, { json: body });
+}
+
+/**
+ * GET /workspaces/{w}/approval-workflows — list the workspace's approval
+ * workflows. Each item exposes `_id` (use as `approval_workflow.workflow_id`),
+ * `name`, `is_default`, and `levels[]`.
+ */
+export function listApprovalWorkflows(
+  c: Client,
+  workspaceId: string,
+  params: { page?: number; per_page?: number } = {},
+) {
+  return c.getPaginated<any>(
+    `/workspaces/${workspaceId}/approval-workflows`,
+    params,
+  );
+}
+
 export function deletePost(
   c: Client,
   workspaceId: string,
@@ -657,6 +687,25 @@ export function removeTeamMember(
     `/workspaces/${workspaceId}/team-members/${memberId}`,
     { params },
   );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Social accounts — remove (disconnect) a connected account.
+// `accountId` is the account's `_id` from accounts:list.
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * DELETE /workspaces/{w}/accounts/{account_id} — remove (disconnect) a social
+ * account. Requires the `save_social` permission (403 otherwise). Returns 404
+ * when the account isn't found, and 422 when removal fails. Success is 200
+ * with an empty `data` array.
+ */
+export function removeAccount(
+  c: Client,
+  workspaceId: string,
+  accountId: string,
+) {
+  return c.delete<any>(`/workspaces/${workspaceId}/accounts/${accountId}`);
 }
 
 // Re-export ContentStudioError for convenience in commands.

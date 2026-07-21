@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — posts:update, approval workflows, LinkedIn polls & collaborators
+
+- New `accounts:remove <account_id>` command — `DELETE /workspaces/{w}/accounts/{account_id}` disconnects a social account (`account_id` is the account's `_id` from `accounts:list`). Requires the `save_social` permission (403 otherwise); 404 when the account isn't found, 422 when removal fails. Carries `--dry-run` like the other mutating commands.
+- New `posts:update <post_id>` command — PUTs `/workspaces/{w}/posts/{post_id}` with the **same body/flags** as `posts:create` (shared option set + body builder). The backend rejects the update (422) once the post is `published` or `processing`.
+- New `approval-workflows:list` command (GET `/workspaces/{w}/approval-workflows`) — lists `{ _id, name, is_default, levels[] }`; use `_id` as `--approval-workflow-id`.
+- `posts:create` / `posts:update` new shortcut flags:
+  - `--linkedin-options '<json>'` → `linkedin_options` (title + poll; poll needs `--post-type poll` and text-only content).
+  - `--facebook-collaborator` (repeatable, max 10) → `facebook_options.collaborators`; `--instagram-collaborator` (repeatable, max 3) → `instagram_options.collaborators`.
+  - `--approval-workflow-id` + `--approval-workflow-notes` → attach a workflow (`approval_workflow.workflow_id`); `--approval-workflow-action restart|resume|renotify_current|keep|remove` → mutate an attached workflow (update only). Mutually exclusive with `--approver`, and exactly one of id/action.
+  - `--post-type` now documents `poll` (carousel is auto-derived by the backend from `post_type=carousel` + 2+ images).
+- `posts:list` now surfaces `linkedin_options` and `approval_workflow` per post in the `--json` output.
+
 ## 1.0.10 — propagate platform-name metadata to the npm package
 
 - Release-only bump. The `package.json`/`plugin.json` description + keywords were updated to include Threads, Tumblr, and Bluesky *after* `1.0.9` had already been published to npm, so npm's `1.0.9` carried the old description and the follow-up deploy failed (`403`, can't republish an existing version). This bump ships the corrected package metadata to npm.
