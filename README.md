@@ -142,9 +142,10 @@ contentstudio --json campaigns:list
 contentstudio --json categories:list
 contentstudio --json labels:list
 contentstudio --json team:list
+contentstudio --json approval-workflows:list   # use an item's _id as --approval-workflow-id
 ```
 
-All support `--page`, `--per-page`, and `--search` filters.
+All support `--page` and `--per-page`; the campaigns/categories/labels/team lists also support `--search`.
 
 ## Connecting Social Accounts
 
@@ -193,6 +194,17 @@ contentstudio --json accounts:add-facebook-group \
 ```
 
 The image URL is optional.
+
+### Remove (disconnect) an account
+
+```bash
+# preview first
+contentstudio --json accounts:remove <account_id> --dry-run
+# then actually remove
+contentstudio --json accounts:remove <account_id>
+```
+
+`account_id` is the account's `_id` from `accounts:list`. Requires the `save_social` permission (403 otherwise); 404 if the account isn't in the workspace.
 
 All three connect commands support `--dry-run` to preview the payload without calling the API.
 
@@ -399,6 +411,25 @@ contentstudio --json posts:list                                          # all r
 contentstudio --json posts:list --status draft --per-page 5
 contentstudio --json posts:list --status scheduled --status published
 contentstudio --json posts:list --date-from 2026-04-01 --date-to 2026-04-30
+```
+
+### Update a post
+
+`posts:update <post_id>` takes the **same flags/body** as `posts:create` (both `--body` and shortcut mode) and PUTs to `/workspaces/{w}/posts/{post_id}`. The backend rejects the update (422) once the post is `published` or `processing`.
+
+```bash
+# Preview an edit (change text + reschedule)
+contentstudio --json posts:update <post_id> -c "Updated copy" -i <account_id> -t scheduled -s "2026-08-01 10:00:00" --dry-run
+
+# Attach an approval workflow (get the id from approval-workflows:list)
+contentstudio --json posts:update <post_id> -c "Q3 launch" -i <account_id> -t draft --approval-workflow-id <workflow_id>
+
+# Mutate the already-attached workflow (update only)
+contentstudio --json posts:update <post_id> -c "Q3 launch" -i <account_id> -t draft --approval-workflow-action restart --approval-workflow-notes "please re-review"
+
+# LinkedIn poll (text-only; requires --post-type poll)
+contentstudio --json posts:update <post_id> -c "Vote!" -i <linkedin_account_id> -t draft --post-type poll \
+  --linkedin-options '{"poll":{"question":"Best day to ship?","options":["Mon","Fri"],"duration":"SEVEN_DAYS"}}'
 ```
 
 ### Delete a post
@@ -812,6 +843,7 @@ The CLI wraps these 20 endpoints from the ContentStudio v1 public API. Base URL:
 | POST   | `/workspaces/{w}/connect/{platform}` | `accounts:connect <platform>` |
 | POST   | `/workspaces/{w}/add/bluesky` | `accounts:add-bluesky` |
 | POST   | `/workspaces/{w}/add/facebook-group` | `accounts:add-facebook-group` |
+| DELETE | `/workspaces/{w}/accounts/{account_id}` | `accounts:remove <account_id>` |
 | GET    | `/workspaces/{w}/campaigns` | `campaigns:list` |
 | GET    | `/workspaces/{w}/content-categories` | `categories:list` |
 | GET    | `/workspaces/{w}/labels` | `labels:list` |

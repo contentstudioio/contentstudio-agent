@@ -7,6 +7,7 @@ import type { Argv } from "yargs";
 
 import {
   listAccounts,
+  listApprovalWorkflows,
   listCampaigns,
   listContentCategories,
   listLabels,
@@ -172,6 +173,38 @@ export function registerLookups<T>(yargs: Argv<T>): Argv<T> {
                 t.full_name ?? t.name ?? "-",
                 t.email ?? "-",
                 t.role ?? t.permission ?? "-",
+              ]),
+            ),
+          { pagination: resp.pagination },
+        );
+      }),
+    )
+    .command(
+      "approval-workflows:list",
+      "List approval workflows in the active workspace. Use an item's _id as --approval-workflow-id on posts:create / posts:update.",
+      (y) =>
+        y
+          .option("page", { type: "number" })
+          .option("per-page", { type: "number" }),
+      run(async (argv: any, g) => {
+        const { cfg, client } = buildClient(g);
+        const wid = resolveWorkspace(cfg, g);
+        const resp = await listApprovalWorkflows(client, wid, {
+          page: argv.page,
+          per_page: argv["per-page"] ?? argv.perPage,
+        });
+        const items = (resp.data as any[]) ?? [];
+        out.emitSuccess(
+          resp.data,
+          g,
+          () =>
+            out.table(
+              ["ID", "Name", "Default", "Levels"],
+              items.map((w) => [
+                String(w._id ?? "-"),
+                w.name ?? "-",
+                w.is_default ? "yes" : "no",
+                String(Array.isArray(w.levels) ? w.levels.length : 0),
               ]),
             ),
           { pagination: resp.pagination },
