@@ -477,6 +477,211 @@ contentstudio --json comments:add <post_id> "Heads up" --mention <user_id> --men
 contentstudio --json comments:add <post_id> "test" --note --dry-run
 ```
 
+> Note: `comments:*` are **ContentStudio-internal** comments on a *draft/scheduled
+> post* — collaboration between your team. To reply to a real comment left by a
+> real person on a published post, use the Social Inbox commands below.
+
+## Social Inbox
+
+The inbox brings DMs, post comments, and reviews into one place. It models all
+three as **elements**, each identified by an `element_ref`:
+
+**Three ids, and they are not interchangeable.** `inbox:list` returns all of
+them; passing the wrong one gives you an empty list rather than an error:
+
+**Use `element_details.element_id`** — verified as the only id accepted by every
+element-scoped command. The top-level `element_ref` field looks like the obvious
+choice but is rejected with a 404 by `inbox:update` and the tag commands.
+
+| Id from `inbox:list` | Used by |
+|----------------------|---------|
+| `element_details.element_id` | everything element-scoped, plus `messages` / `send` / `notes` / `bookmarks` |
+| `element_details.post_id` | `comments`, `comment-add` |
+| `element_ref` | works only for `mark-read` and `contact*` — avoid |
+
+| Inbox type | What it is |
+|------------|------------|
+| `conversation` | A DM thread (Facebook / Instagram) |
+| `post` | A published post with comments on it |
+| `review` | A review (e.g. Google Business Profile) |
+
+Most write commands also need `--platform-id` — the connected account the item
+belongs to, since replies go out through that account. Find it with
+`accounts:list`.
+
+### Browse and search
+
+```bash
+# Counts per bucket — cheapest way to see if anything needs attention
+contentstudio --json inbox:summary
+
+# Everything
+contentstudio --json inbox:list
+
+# Just unanswered DMs, 50 at a time
+contentstudio --json inbox:list --type conversation --action all --limit 50
+
+# Full-text search, restricted to one Facebook account
+contentstudio --json inbox:list \
+  --search "refund" \
+  --channels '{"facebook":["<account_id>"]}'
+
+# Filter by tag
+contentstudio --json inbox:list --tag <tag_id> --tag <tag_id>
+```
+
+Inbox lists use `--limit` (with `--per-page` accepted as an alias) and `--page`.
+
+**Limits the API enforces**, checked client-side before any request goes out:
+
+| Limit | Applies to |
+|-------|------------|
+| `--limit` ≤ 200 | `inbox:list`, `inbox:messages`, `inbox:comments` |
+| ≤ 100 `--element` refs | `inbox:update` |
+| Exactly one operation per call | `inbox:update` (`--status` / `--archived` / `--assigned` are mutually exclusive) |
+| Tag name ≤ 50 chars | `inbox:tag-create` |
+
+`inbox:update` may also come back as a **partial** success (HTTP `207`) when
+some elements could not be updated. The CLI prints a warning listing the
+untouched refs instead of reporting a clean pass.
+
+### Read a thread
+
+```bash
+# Messages, newest first
+contentstudio --json inbox:messages <conversation_id> --sort-order desc --limit 20
+
+# Note: a thread also contains activity events (someone marked it done,
+# archived it, etc.). Those have `message: null` and an `action` block —
+# filter them out with `action == null` if you only want real messages.
+
+# Comments on a published post
+contentstudio --json inbox:comments <post_id>
+
+# Team-only notes attached to a conversation
+contentstudio --json inbox:notes <conversation_id>
+
+# Starred messages
+contentstudio --json inbox:bookmarks <conversation_id>
+
+# Who am I talking to?
+contentstudio --json inbox:contact <element_ref>
+```
+
+### Reply
+
+These reach real customers. Preview with `--dry-run` first.
+
+```bash
+# Send a DM
+contentstudio --json inbox:send <conversation_id> \
+  --platform-type facebook \
+  --platform-id <account_id> \
+  --message "Thanks for reaching out — shipping today!" \
+  --dry-run
+
+# Send a DM with an image attached
+contentstudio --json inbox:send <conversation_id> \
+  --platform-type instagram --platform-id <account_id> \
+  --message "Here's the size chart" \
+  --file ./size-chart.png --file-type image
+
+# Comment on a post
+contentstudio --json inbox:comment-add <post_id> \
+  --platform-type facebook --platform-id <account_id> \
+  --message "Glad you like it!"
+
+# Reply to a specific comment (threaded)
+contentstudio --json inbox:comment-add <post_id> \
+  --platform-type facebook --platform-id <account_id> \
+  --comment-id <comment_id> --message "DMing you the details."
+
+# Facebook private reply — answers a public comment via DM
+contentstudio --json inbox:comment-add <post_id> \
+  --platform-type facebook --platform-id <account_id> \
+  --comment-id <comment_id> --private-reply \
+  --message "Sent you a DM with your order info."
+
+# Reply to a review (upsert — replaces an existing reply)
+contentstudio --json inbox:review-reply <review_id> \
+  --platform-id <account_id> --reply "Thanks for the feedback!"
+
+# Internal note — your team only, never shown to the customer
+contentstudio --json inbox:note-add <conversation_id> \
+  --platform-type facebook --platform-id <account_id> \
+  --message "Escalated to billing" --mention <user_id>
+```
+
+Retrying a send? Pass `--idempotency-key <uuid>` so a repeated request isn't
+delivered twice. It protects sequential retries, not concurrent ones.
+
+### Triage
+
+```bash
+contentstudio --json inbox:mark-read <element_ref>
+
+# Bulk: close out several at once (max 100 refs per call)
+contentstudio --json inbox:update \
+  --element <ref_1> --element <ref_2> --status done
+
+# Archive / assign — exactly ONE operation per call
+contentstudio --json inbox:update --element <ref> --archived
+contentstudio --json inbox:update --element <ref> \
+  --assigned --assigned-to '{"id":"<user_id>"}'
+
+# Star a message
+contentstudio --json inbox:star <message_id>
+contentstudio --json inbox:unstar <message_id>
+```
+
+### Moderate
+
+```bash
+# Hide is reversible — prefer it over delete
+contentstudio --json inbox:comment-hide <comment_id>
+contentstudio --json inbox:comment-unhide <comment_id> \
+  --platform-type facebook --platform-id <account_id>
+
+# Like / unlike (Facebook)
+contentstudio --json inbox:comment-like <comment_id>
+contentstudio --json inbox:comment-unlike <comment_id>
+
+# Delete a comment (LinkedIn additionally needs --comment-urn)
+contentstudio --json inbox:comment-delete <comment_id> \
+  --platform-type facebook --platform-id <account_id>
+
+# Delete a message / a review reply
+contentstudio --json inbox:message-delete <message_id> --platform-id <account_id>
+contentstudio --json inbox:review-reply-delete <review_id> --platform-id <account_id>
+```
+
+### Tags
+
+```bash
+contentstudio --json inbox:tags
+contentstudio --json inbox:tag-create --name "VIP" --color "#ff0055"
+contentstudio --json inbox:tag-update <tag_id> --name "VIP customer"
+contentstudio --json inbox:tag-delete --tag <tag_id> --tag <tag_id>
+
+# Fold several tags into one new tag
+contentstudio --json inbox:tag-merge --name "Support" --color "#0088ff" \
+  --tag <tag_id> --tag <tag_id>
+
+# Attach / detach on an element
+contentstudio --json inbox:tag-attach <element_ref> \
+  --tag <tag_id> --platform-id <account_id> --inbox-type conversation
+contentstudio --json inbox:tag-detach <element_ref> <tag_id> \
+  --platform-id <account_id> --inbox-type conversation
+```
+
+### Updating contact details
+
+```bash
+contentstudio --json inbox:contact-update <element_ref> \
+  --platform-id <account_id> \
+  --name "Jane Doe" --email jane@example.com --company "Acme"
+```
+
 ## Media Library
 
 ### List media assets

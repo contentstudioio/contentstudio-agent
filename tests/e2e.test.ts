@@ -32,6 +32,14 @@ import {
   listPosts,
   listTeamMembers,
   listWorkspaces,
+  getInboxContact,
+  inboxSummary,
+  listInboxBookmarks,
+  listInboxMessages,
+  listInboxNotes,
+  listInboxPostComments,
+  listInboxTags,
+  searchInboxElements,
 } from "../src/api";
 import { Config } from "../src/config";
 
@@ -62,9 +70,10 @@ describeIfCreds("API direct E2E", () => {
   let pickAccountId: string;
 
   beforeAll(async () => {
-    const accts: any = await listAccounts(mkClient(), WORKSPACE_ID!, {
-      per_page: 20,
-    });
+    // listAccounts returns {data, pagination} — not a bare array.
+    const accts: any[] = (
+      await listAccounts(mkClient(), WORKSPACE_ID!, { per_page: 20 })
+    ).data;
     if (!Array.isArray(accts) || !accts.length) {
       throw new Error(
         `Workspace ${WORKSPACE_ID} has no connected accounts — cannot run E2E.`,
@@ -81,8 +90,8 @@ describeIfCreds("API direct E2E", () => {
   });
 
   it("GET /workspaces includes the test workspace", async () => {
-    const ws: any = await listWorkspaces(mkClient(), { per_page: 100 });
-    const ids = (ws as any[]).map((w) => w._id);
+    const ws = await listWorkspaces(mkClient(), { per_page: 100 });
+    const ids = (ws.data as any[]).map((w) => w._id);
     expect(ids).toContain(WORKSPACE_ID);
   });
 
@@ -117,10 +126,12 @@ describeIfCreds("API direct E2E", () => {
         await addComment(c, WORKSPACE_ID!, postId, "E2E internal note", {
           isNote: true,
         });
-        const comments: any = await listComments(c, WORKSPACE_ID!, postId, {
+        const comments = await listComments(c, WORKSPACE_ID!, postId, {
           per_page: 20,
         });
-        expect(Array.isArray(comments)).toBe(true);
+        // Paginated wrapper: the array lives on `.data`. Asserting on the
+        // wrapper itself silently passed because this block swallows throws.
+        expect(Array.isArray(comments.data)).toBe(true);
       } catch (e: any) {
         // eslint-disable-next-line no-console
         console.warn(
@@ -169,10 +180,10 @@ describeIfCreds("CLI subprocess E2E", () => {
     if (!fs.existsSync(CLI)) {
       throw new Error("dist/index.js missing — run 'npm run build' first.");
     }
-    const accts: any = await listAccounts(mkClient(), WORKSPACE_ID!, {
-      per_page: 20,
-    });
-    pickAccountId = accts[0]._id;
+    const accts: any[] = (
+      await listAccounts(mkClient(), WORKSPACE_ID!, { per_page: 20 })
+    ).data;
+    pickAccountId = accts[0]?._id;
   });
 
   afterAll(() => {
@@ -257,5 +268,85 @@ describeIfCreds("CLI subprocess E2E", () => {
     );
     expect(r.code).toBe(0);
     expect(JSON.parse(r.stdout).ok).toBe(true);
+  });
+});
+
+
+describeIfCreds("Social Inbox E2E (read-only)", () => {
+  it("inbox summary returns per-bucket counts", async () => {
+    const counts: any = await inboxSummary(mkClient(), WORKSPACE_ID!, {});
+    expect(counts).toBeTypeOf("object");
+    expect(Array.isArray(counts)).toBe(false);
+    // Buckets are upper-case keys like ALL / UNASSIGNED / ARCHIVED.
+    expect(Object.keys(counts).length).toBeGreaterThan(0);
+  });
+
+  it("inbox search unwraps `elements` and normalises pagination", async () => {
+    const res = await searchInboxElements(mkClient(), WORKSPACE_ID!, { limit: 5 });
+    expect(Array.isArray(res.data)).toBe(true);
+    if (res.data.length) {
+      const e: any = res.data[0];
+      // Guards the column mapping used by `inbox:list`.
+      expect(e).toHaveProperty("inbox_type");
+      expect(e).toHaveProperty("platform");
+      expect(e).toHaveProperty("element_ref");
+      expect(e.element_details).toBeTypeOf("object");
+      expect(e.element_details).toHaveProperty("element_id");
+      expect(res.pagination).toBeDefined();
+      expect(res.pagination!.total).toBeGreaterThanOrEqual(res.data.length);
+    }
+  });
+
+  it("inbox tags unwrap to an array", async () => {
+    const tags: any = await listInboxTags(mkClient(), WORKSPACE_ID!);
+    expect(Array.isArray(tags)).toBe(true);
+  });
+
+  it("a conversation's messages, notes and bookmarks all unwrap + paginate", async () => {
+    const c = mkClient();
+    const res = await searchInboxElements(c, WORKSPACE_ID!, {
+      inbox_types: ["conversation"],
+      limit: 1,
+    });
+    if (!res.data.length) return; // nothing to assert against in this workspace
+
+    // IMPORTANT: these endpoints take element_details.element_id, NOT
+    // element_ref. Passing element_ref returns an empty list, so this test
+    // also guards the documented id mapping.
+    const convId = (res.data[0] as any).element_details.element_id;
+
+    const msgs = await listInboxMessages(c, WORKSPACE_ID!, convId, { limit: 5 });
+    expect(Array.isArray(msgs.data)).toBe(true);
+    expect(msgs.pagination).toBeDefined();
+
+    const notes = await listInboxNotes(c, WORKSPACE_ID!, convId, { limit: 5 });
+    expect(Array.isArray(notes.data)).toBe(true);
+
+    const marks = await listInboxBookmarks(c, WORKSPACE_ID!, convId, { limit: 5 });
+    expect(Array.isArray(marks.data)).toBe(true);
+
+    const contact: any = await getInboxContact(
+      c,
+      WORKSPACE_ID!,
+      (res.data[0] as any).element_ref,
+    );
+    // Unwrapped from {status, contact} — must not still be the envelope.
+    expect(contact).toBeTypeOf("object");
+    expect(contact).not.toHaveProperty("status");
+  });
+
+  it("post comments page on threads, not raw comment count", async () => {
+    const c = mkClient();
+    const res = await searchInboxElements(c, WORKSPACE_ID!, {
+      inbox_types: ["post"],
+      limit: 1,
+    });
+    if (!res.data.length) return;
+    const postId = (res.data[0] as any).element_details.post_id;
+    if (!postId) return;
+    const comments = await listInboxPostComments(c, WORKSPACE_ID!, postId, {
+      limit: 5,
+    });
+    expect(Array.isArray(comments.data)).toBe(true);
   });
 });

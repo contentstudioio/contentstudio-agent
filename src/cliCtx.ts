@@ -5,6 +5,8 @@
 
 import { Config, loadConfig } from "./config";
 import { Client } from "./api";
+import { ConfigError } from "./errors";
+import * as out from "./output";
 import { CliContext, emitError, emitSuccess } from "./output";
 
 export interface GlobalArgs extends CliContext {
@@ -56,6 +58,44 @@ export function run<A = any>(
       process.exit(code);
     }
   };
+}
+
+/**
+ * Standard `--dry-run` output: print the endpoint and body that *would* be
+ * sent, and touch no API. Shared by every mutating command.
+ */
+export function emitDryRun(
+  g: GlobalArgs,
+  endpoint: string,
+  body: Record<string, unknown> | undefined,
+  label: string,
+): void {
+  out.emitSuccess({ dry_run: true, endpoint, body: body ?? {} }, g, () => {
+    out.info(`DRY RUN — would ${label}`);
+    console.log(JSON.stringify(body ?? {}, null, 2));
+  });
+}
+
+/** Parse a `--flag '<json object>'` option, with a readable error. */
+export function parseJsonOption(
+  raw: unknown,
+  flag: string,
+): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(String(raw));
+  } catch (e) {
+    throw new ConfigError(`${flag}: invalid JSON — ${(e as Error).message}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new ConfigError(`${flag}: JSON must be an object.`);
+  }
+  return parsed as Record<string, unknown>;
+}
+
+/** True when the invocation asked for a dry run (handles both yargs spellings). */
+export function isDryRun(argv: any): boolean {
+  return !!(argv["dry-run"] ?? argv.dryRun);
 }
 
 export { emitSuccess };

@@ -5,16 +5,18 @@
     "url": "https://contentstudio.io"
   },
   "metadata": {
-    "description": "ContentStudio social-media automation skill for scheduling posts across 8+ platforms",
-    "version": "1.0.0"
+    "description": "ContentStudio social-media automation skill — scheduling and social inbox across 10+ platforms",
+    "version": "1.1.0"
   },
   "plugins": [
     {
       "name": "contentstudio",
-      "description": "Social-media automation CLI for scheduling posts, managing media, accounts, comments, and approvals across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, and Google Business Profile via the ContentStudio API.",
+      "description": "Social-media automation CLI for scheduling posts and managing the social inbox (DMs, comments, reviews), media, accounts, and approvals across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile via the ContentStudio API.",
       "source": "./",
       "strict": false,
-      "skills": ["./"]
+      "skills": [
+        "./"
+      ]
     }
   ]
 }

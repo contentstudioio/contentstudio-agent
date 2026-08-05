@@ -179,6 +179,10 @@ export class Client {
     return this.request<T>("PUT", p, { json: body?.json });
   }
 
+  patch<T = unknown>(p: string, body?: { json?: unknown }): Promise<T> {
+    return this.request<T>("PATCH", p, { json: body?.json });
+  }
+
   delete<T = unknown>(p: string, body?: unknown): Promise<T> {
     return this.request<T>("DELETE", p, { json: body });
   }
@@ -706,6 +710,644 @@ export function removeAccount(
   accountId: string,
 ) {
   return c.delete<any>(`/workspaces/${workspaceId}/accounts/${accountId}`);
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Social Inbox — conversations (DMs), post comments, reviews, tags.
+// (added in v1.1.0)
+//
+// Inbox "elements" are the unified unit: a conversation, a commented post,
+// or a review. They are addressed by `element_ref` — a canonical ref that
+// may contain reserved characters, so it is always percent-encoded here.
+//
+// Note: the inbox list/summary endpoints are POST-with-a-body (not GET with
+// query params) because the filter payload is structured.
+// ─────────────────────────────────────────────────────────────────
+
+/** Percent-encode a path segment that may contain reserved characters. */
+function seg(v: string): string {
+  return encodeURIComponent(v);
+}
+
+const inboxBase = (workspaceId: string) => `/workspaces/${workspaceId}/inbox`;
+
+/**
+ * The inbox service does NOT use the `{status, message, data}` envelope the
+ * rest of the v1 API uses. It returns the collection under its own key
+ * (`elements`, `messages`, `comments`, `tags`, …) with paginator fields whose
+ * names differ per endpoint. These helpers normalise both so inbox commands
+ * emit the same `{ok, data, pagination}` envelope as every other command.
+ */
+function inboxCollection(body: any, ...keys: string[]): any[] {
+  if (Array.isArray(body)) return body;
+  if (body && typeof body === "object") {
+    for (const k of [...keys, "data"]) {
+      if (Array.isArray(body[k])) return body[k];
+    }
+  }
+  return [];
+}
+
+/** Pull a single object out of an inbox response by key, tolerating absence. */
+function inboxObject(body: any, key: string): any {
+  if (body && typeof body === "object" && key in body) return body[key];
+  return body;
+}
+
+function buildPagination(o: {
+  page?: number;
+  perPage?: number;
+  total?: number;
+  lastPage?: number;
+  count: number;
+}): Pagination | undefined {
+  const { total, count } = o;
+  if (typeof total !== "number") return undefined;
+  const page = typeof o.page === "number" && o.page > 0 ? o.page : 1;
+  const perPage =
+    typeof o.perPage === "number" && o.perPage > 0 ? o.perPage : count || total;
+  const lastPage =
+    typeof o.lastPage === "number" && o.lastPage > 0
+      ? o.lastPage
+      : perPage > 0
+        ? Math.max(1, Math.ceil(total / perPage))
+        : 1;
+  const from = total === 0 ? null : (page - 1) * perPage + 1;
+  const to = total === 0 ? null : Math.min((page - 1) * perPage + count, total);
+  return {
+    current_page: page,
+    per_page: perPage,
+    total,
+    last_page: lastPage,
+    from,
+    to,
+    has_more: page < lastPage,
+  };
+}
+
+/** The inbox caps page size at 200 items on every list endpoint. */
+export const MAX_INBOX_LIMIT = 200;
+/** A single bulk element update may address at most 100 elements. */
+export const MAX_INBOX_BULK_REFS = 100;
+/** Tag names are capped at 50 characters by POST /inbox/tags. */
+export const MAX_INBOX_TAG_NAME = 50;
+
+function assertLimit(limit: number | undefined, flag = "--limit"): void {
+  if (limit !== undefined && limit > MAX_INBOX_LIMIT) {
+    throw new ConfigError(
+      `${flag} may not exceed ${MAX_INBOX_LIMIT} for inbox endpoints (got ${limit}). ` +
+        `Page through with --page instead.`,
+    );
+  }
+}
+
+export interface InboxSearchBody {
+  inbox_types?: string[];
+  action?: string;
+  page?: number;
+  limit?: number;
+  search_term?: string;
+  tags?: string[];
+  all_channels?: Record<string, unknown>;
+  targeted_element?: string;
+}
+
+/**
+ * POST /workspaces/{w}/inbox/elements/search — the primary inbox read.
+ * An empty result set is a successful empty read, not a 404.
+ */
+export async function searchInboxElements(
+  c: Client,
+  workspaceId: string,
+  body: InboxSearchBody = {},
+): Promise<PaginatedResponse<any[]>> {
+  assertLimit(body.limit);
+  // Response: {status, elements[], total_count, current_page, last_page, limit}
+  const raw = await c.request<any>(
+    "POST",
+    `${inboxBase(workspaceId)}/elements/search`,
+    { json: body, unwrap: false },
+  );
+  const data = inboxCollection(raw, "elements");
+  return {
+    data,
+    pagination: buildPagination({
+      page: raw?.current_page ?? body.page,
+      perPage: raw?.limit ?? body.limit,
+      total: raw?.total_count,
+      lastPage: raw?.last_page,
+      count: data.length,
+    }),
+  };
+}
+
+/** POST /workspaces/{w}/inbox/elements/summary — unread/pending counts per bucket. */
+export async function inboxSummary(
+  c: Client,
+  workspaceId: string,
+  body: { inbox_types?: string[]; all_channels?: Record<string, unknown> } = {},
+) {
+  // Response: {status, element_counts}
+  const raw = await c.request<any>(
+    "POST",
+    `${inboxBase(workspaceId)}/elements/summary`,
+    { json: body, unwrap: false },
+  );
+  return inboxObject(raw, "element_counts");
+}
+
+/**
+ * PATCH /workspaces/{w}/inbox/elements — bulk state change across elements
+ * (mark done/pending, archive, assign).
+ */
+export function bulkUpdateInboxElements(
+  c: Client,
+  workspaceId: string,
+  body: {
+    element_refs: string[];
+    status?: "done" | "pending";
+    archived?: boolean;
+    assigned?: boolean;
+    assigned_to?: Record<string, unknown>;
+  },
+) {
+  if (body.element_refs.length > MAX_INBOX_BULK_REFS) {
+    throw new ConfigError(
+      `A bulk update may address at most ${MAX_INBOX_BULK_REFS} elements ` +
+        `(got ${body.element_refs.length}). Split it into batches.`,
+    );
+  }
+  // The API rejects anything but exactly one operation per call with a 422
+  // ("not exactly one operation supplied"). `assigned_to` is part of the
+  // assign operation, not an operation of its own.
+  const ops = ["status", "archived", "assigned"].filter(
+    (k) => (body as Record<string, unknown>)[k] !== undefined,
+  );
+  if (ops.length !== 1) {
+    throw new ConfigError(
+      ops.length === 0
+        ? "Supply exactly one operation: --status, --archived, or --assigned."
+        : `Supply exactly one operation per call — got ${ops.length} (${ops.join(", ")}). ` +
+          `Run separate commands.`,
+    );
+  }
+  return c.patch<any>(`${inboxBase(workspaceId)}/elements`, { json: body });
+}
+
+/** PUT /workspaces/{w}/inbox/elements/{ref}/read — idempotent. */
+export function markInboxElementRead(
+  c: Client,
+  workspaceId: string,
+  elementRef: string,
+) {
+  return c.put<any>(`${inboxBase(workspaceId)}/elements/${seg(elementRef)}/read`);
+}
+
+/** GET /workspaces/{w}/inbox/elements/{ref}/contact — contact profile. */
+export async function getInboxContact(
+  c: Client,
+  workspaceId: string,
+  elementRef: string,
+  params: { platform_id?: string } = {},
+) {
+  // Response: {status, contact}
+  const raw = await c.request<any>(
+    "GET",
+    `${inboxBase(workspaceId)}/elements/${seg(elementRef)}/contact`,
+    { params, unwrap: false },
+  );
+  return inboxObject(raw, "contact");
+}
+
+/** PATCH /workspaces/{w}/inbox/elements/{ref}/contact — update contact profile. */
+export function updateInboxContact(
+  c: Client,
+  workspaceId: string,
+  elementRef: string,
+  body: unknown,
+) {
+  return c.patch<any>(
+    `${inboxBase(workspaceId)}/elements/${seg(elementRef)}/contact`,
+    { json: body },
+  );
+}
+
+// ── Conversations (DMs) ──────────────────────────────────────────
+
+export async function listInboxMessages(
+  c: Client,
+  workspaceId: string,
+  conversationId: string,
+  params: { page?: number; limit?: number; sort_order?: "asc" | "desc" } = {},
+): Promise<PaginatedResponse<any[]>> {
+  assertLimit(params.limit);
+  // Response: {status, messages[], total_messages, page, page_count}
+  const raw = await c.request<any>(
+    "GET",
+    `${inboxBase(workspaceId)}/conversations/${seg(conversationId)}/messages`,
+    { params, unwrap: false },
+  );
+  const data = inboxCollection(raw, "messages");
+  return {
+    data,
+    pagination: buildPagination({
+      page: raw?.page ?? params.page,
+      perPage: params.limit,
+      total: raw?.total_messages,
+      lastPage: raw?.page_count,
+      count: data.length,
+    }),
+  };
+}
+
+/**
+ * POST /workspaces/{w}/inbox/conversations/{c}/messages — send a DM.
+ * multipart/form-data: text-only when no file, media when `filePath` is set.
+ *
+ * `idempotencyKey` de-duplicates a sequential retry. Per the API docs it does
+ * NOT protect against concurrent duplicate sends.
+ */
+export function sendInboxMessage(
+  c: Client,
+  workspaceId: string,
+  conversationId: string,
+  opts: {
+    platformType: string;
+    platformId: string;
+    message?: string;
+    filePath?: string;
+    fileType?: string;
+    idempotencyKey?: string;
+  },
+) {
+  if (!opts.message && !opts.filePath) {
+    throw new ConfigError(
+      "Provide --message and/or --file — a DM needs text, an attachment, or both.",
+    );
+  }
+  if (opts.filePath && !fs.existsSync(opts.filePath)) {
+    throw new ConfigError(`Attachment file not found: ${opts.filePath}`);
+  }
+
+  const form = new FormData();
+  form.append("platform_type", opts.platformType);
+  form.append("platform_id", opts.platformId);
+  if (opts.message) form.append("message", opts.message);
+  if (opts.fileType) form.append("file_type", opts.fileType);
+  if (opts.filePath) {
+    form.append("file", fs.createReadStream(opts.filePath), {
+      filename: path.basename(opts.filePath),
+    });
+  }
+
+  return c.request<any>(
+    "POST",
+    `${inboxBase(workspaceId)}/conversations/${seg(conversationId)}/messages`,
+    {
+      form,
+      extraHeaders: opts.idempotencyKey
+        ? { "Idempotency-Key": opts.idempotencyKey }
+        : undefined,
+    },
+  );
+}
+
+/** GET /workspaces/{w}/inbox/conversations/{c}/bookmarks — starred messages. */
+export async function listInboxBookmarks(
+  c: Client,
+  workspaceId: string,
+  conversationId: string,
+  params: { page?: number; limit?: number } = {},
+): Promise<PaginatedResponse<any[]>> {
+  assertLimit(params.limit);
+  // Verified against the live API: {status, bookmarks[], total,
+  // total_bookmarks, page, limit} — paginated, though the spec says neither.
+  const raw = await c.request<any>(
+    "GET",
+    `${inboxBase(workspaceId)}/conversations/${seg(conversationId)}/bookmarks`,
+    { params, unwrap: false },
+  );
+  const data = inboxCollection(raw, "bookmarks", "messages");
+  return {
+    data,
+    pagination: buildPagination({
+      page: raw?.page ?? params.page,
+      perPage: raw?.limit ?? params.limit,
+      total: raw?.total_bookmarks ?? raw?.total,
+      count: data.length,
+    }),
+  };
+}
+
+/** PUT|DELETE /workspaces/{w}/inbox/messages/{id}/bookmark — star / unstar. */
+export function setInboxMessageBookmark(
+  c: Client,
+  workspaceId: string,
+  messageId: string,
+  starred: boolean,
+) {
+  const p = `${inboxBase(workspaceId)}/messages/${seg(messageId)}/bookmark`;
+  return starred ? c.put<any>(p) : c.delete<any>(p);
+}
+
+/** DELETE /workspaces/{w}/inbox/messages/{id} — soft delete. */
+export function deleteInboxMessage(
+  c: Client,
+  workspaceId: string,
+  messageId: string,
+  params: { platform_id: string },
+) {
+  return c.request<any>(
+    "DELETE",
+    `${inboxBase(workspaceId)}/messages/${seg(messageId)}`,
+    { params },
+  );
+}
+
+// ── Internal notes on a conversation ─────────────────────────────
+
+export async function listInboxNotes(
+  c: Client,
+  workspaceId: string,
+  conversationId: string,
+  params: { page?: number; limit?: number } = {},
+): Promise<PaginatedResponse<any[]>> {
+  assertLimit(params.limit);
+  // Verified against the live API: {status, notes[], total, total_notes,
+  // page, limit}. The published spec documents no schema here and does not
+  // mention that this endpoint paginates.
+  const raw = await c.request<any>(
+    "GET",
+    `${inboxBase(workspaceId)}/conversations/${seg(conversationId)}/notes`,
+    { params, unwrap: false },
+  );
+  const data = inboxCollection(raw, "notes");
+  return {
+    data,
+    pagination: buildPagination({
+      page: raw?.page ?? params.page,
+      perPage: raw?.limit ?? params.limit,
+      total: raw?.total_notes ?? raw?.total,
+      count: data.length,
+    }),
+  };
+}
+
+export function addInboxNote(
+  c: Client,
+  workspaceId: string,
+  conversationId: string,
+  body: {
+    message: string;
+    platform_type: string;
+    platform_id: string;
+    mentioned_users?: string[];
+  },
+  opts: { idempotencyKey?: string } = {},
+) {
+  return c.request<any>(
+    "POST",
+    `${inboxBase(workspaceId)}/conversations/${seg(conversationId)}/notes`,
+    {
+      json: body,
+      extraHeaders: opts.idempotencyKey
+        ? { "Idempotency-Key": opts.idempotencyKey }
+        : undefined,
+    },
+  );
+}
+
+// ── Post comments ────────────────────────────────────────────────
+
+export async function listInboxPostComments(
+  c: Client,
+  workspaceId: string,
+  postId: string,
+  params: { page?: number; limit?: number } = {},
+): Promise<PaginatedResponse<any[]>> {
+  assertLimit(params.limit);
+  // Response: {status, comments[], total_comment_count, total_threads}.
+  // `total_threads` is the pagination universe (top-level threads);
+  // `total_comment_count` counts replies too, so it must NOT drive paging.
+  const raw = await c.request<any>(
+    "GET",
+    `${inboxBase(workspaceId)}/posts/${seg(postId)}/comments`,
+    { params, unwrap: false },
+  );
+  const data = inboxCollection(raw, "comments");
+  return {
+    data,
+    pagination: buildPagination({
+      page: params.page,
+      perPage: params.limit,
+      total: raw?.total_threads,
+      count: data.length,
+    }),
+  };
+}
+
+/**
+ * POST /workspaces/{w}/inbox/posts/{p}/comments — comment, threaded reply
+ * (pass `commentId`), or Facebook private reply (`isPrivateReply`).
+ */
+export function addInboxPostComment(
+  c: Client,
+  workspaceId: string,
+  postId: string,
+  opts: {
+    platformType: string;
+    platformId: string;
+    message?: string;
+    commentId?: string;
+    isPrivateReply?: boolean;
+    attachmentPath?: string;
+    idempotencyKey?: string;
+  },
+) {
+  if (!opts.message && !opts.attachmentPath) {
+    throw new ConfigError(
+      "Provide --message and/or --attachment — a comment needs text, an attachment, or both.",
+    );
+  }
+  if (opts.attachmentPath && !fs.existsSync(opts.attachmentPath)) {
+    throw new ConfigError(`Attachment file not found: ${opts.attachmentPath}`);
+  }
+
+  const form = new FormData();
+  form.append("platform_type", opts.platformType);
+  form.append("platform_id", opts.platformId);
+  if (opts.message) form.append("message", opts.message);
+  if (opts.commentId) form.append("comment_id", opts.commentId);
+  if (opts.isPrivateReply) form.append("is_private_reply", "1");
+  if (opts.attachmentPath) {
+    form.append("attachment_file", fs.createReadStream(opts.attachmentPath), {
+      filename: path.basename(opts.attachmentPath),
+    });
+  }
+
+  return c.request<any>(
+    "POST",
+    `${inboxBase(workspaceId)}/posts/${seg(postId)}/comments`,
+    {
+      form,
+      extraHeaders: opts.idempotencyKey
+        ? { "Idempotency-Key": opts.idempotencyKey }
+        : undefined,
+    },
+  );
+}
+
+/** DELETE /workspaces/{w}/inbox/comments/{id} — `comment_urn` is LinkedIn-only. */
+export function deleteInboxComment(
+  c: Client,
+  workspaceId: string,
+  commentId: string,
+  params: { platform_type: string; platform_id: string; comment_urn?: string },
+) {
+  return c.request<any>(
+    "DELETE",
+    `${inboxBase(workspaceId)}/comments/${seg(commentId)}`,
+    { params },
+  );
+}
+
+/**
+ * PUT|DELETE /workspaces/{w}/inbox/comments/{id}/hidden — hide / unhide.
+ * Idempotent. Unhide requires platform_type + platform_id; hide does not.
+ */
+export function setInboxCommentHidden(
+  c: Client,
+  workspaceId: string,
+  commentId: string,
+  hidden: boolean,
+  params: { platform_type?: string; platform_id?: string } = {},
+) {
+  const p = `${inboxBase(workspaceId)}/comments/${seg(commentId)}/hidden`;
+  return hidden
+    ? c.put<any>(p)
+    : c.request<any>("DELETE", p, { params });
+}
+
+/** PUT|DELETE /workspaces/{w}/inbox/comments/{id}/like — Facebook only, idempotent. */
+export function setInboxCommentLike(
+  c: Client,
+  workspaceId: string,
+  commentId: string,
+  liked: boolean,
+) {
+  const p = `${inboxBase(workspaceId)}/comments/${seg(commentId)}/like`;
+  return liked ? c.put<any>(p) : c.delete<any>(p);
+}
+
+// ── Reviews ──────────────────────────────────────────────────────
+
+/** PUT /workspaces/{w}/inbox/reviews/{id}/reply — upsert (add or replace). */
+export function upsertInboxReviewReply(
+  c: Client,
+  workspaceId: string,
+  reviewId: string,
+  body: { platform_id: string; review_reply: string },
+) {
+  return c.put<any>(`${inboxBase(workspaceId)}/reviews/${seg(reviewId)}/reply`, {
+    json: body,
+  });
+}
+
+export function deleteInboxReviewReply(
+  c: Client,
+  workspaceId: string,
+  reviewId: string,
+  params: { platform_id: string },
+) {
+  return c.request<any>(
+    "DELETE",
+    `${inboxBase(workspaceId)}/reviews/${seg(reviewId)}/reply`,
+    { params },
+  );
+}
+
+// ── Tags ─────────────────────────────────────────────────────────
+
+export async function listInboxTags(c: Client, workspaceId: string) {
+  // Response: {status, tags[], total}
+  const raw = await c.request<any>("GET", `${inboxBase(workspaceId)}/tags`, {
+    unwrap: false,
+  });
+  return inboxCollection(raw, "tags");
+}
+
+export function createInboxTag(
+  c: Client,
+  workspaceId: string,
+  body: { tag_name: string; tag_color: string },
+) {
+  if (body.tag_name.length > MAX_INBOX_TAG_NAME) {
+    throw new ConfigError(
+      `Tag name may not exceed ${MAX_INBOX_TAG_NAME} characters ` +
+        `(got ${body.tag_name.length}).`,
+    );
+  }
+  return c.post<any>(`${inboxBase(workspaceId)}/tags`, { json: body });
+}
+
+export function updateInboxTag(
+  c: Client,
+  workspaceId: string,
+  tagId: string,
+  body: { tag_name?: string; tag_color?: string },
+) {
+  return c.patch<any>(`${inboxBase(workspaceId)}/tags/${seg(tagId)}`, {
+    json: body,
+  });
+}
+
+/** DELETE /workspaces/{w}/inbox/tags — bulk delete by id. */
+export function deleteInboxTags(
+  c: Client,
+  workspaceId: string,
+  tagIds: string[],
+) {
+  return c.delete<any>(`${inboxBase(workspaceId)}/tags`, { tag_ids: tagIds });
+}
+
+/** POST /workspaces/{w}/inbox/tags/merge — fold several tags into a new one. */
+export function mergeInboxTags(
+  c: Client,
+  workspaceId: string,
+  body: { tag_name: string; tag_color: string; tag_ids: string[] },
+) {
+  return c.post<any>(`${inboxBase(workspaceId)}/tags/merge`, { json: body });
+}
+
+/** POST /workspaces/{w}/inbox/elements/{ref}/tags — attach tags to an element. */
+export function attachInboxTags(
+  c: Client,
+  workspaceId: string,
+  elementRef: string,
+  body: {
+    tags: string[];
+    platform_id: string;
+    inbox_type: "conversation" | "post" | "review";
+  },
+) {
+  return c.post<any>(
+    `${inboxBase(workspaceId)}/elements/${seg(elementRef)}/tags`,
+    { json: body },
+  );
+}
+
+export function detachInboxTag(
+  c: Client,
+  workspaceId: string,
+  elementRef: string,
+  tagId: string,
+  params: { platform_id: string; inbox_type: string },
+) {
+  return c.request<any>(
+    "DELETE",
+    `${inboxBase(workspaceId)}/elements/${seg(elementRef)}/tags/${seg(tagId)}`,
+    { params },
+  );
 }
 
 // Re-export ContentStudioError for convenience in commands.

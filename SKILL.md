@@ -1,7 +1,7 @@
 ---
 name: contentstudio
-description: ContentStudio is a tool to schedule social-media posts across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile. Use when the user wants to list/create/delete/approve posts, manage media, or audit workspaces, accounts, campaigns, labels, categories, or team-members on their ContentStudio account.
-version: 1.0.10
+description: ContentStudio is a tool to schedule social-media posts and manage the social inbox across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile. Use when the user wants to list/create/delete/approve posts, read and reply to DMs, comments and reviews, manage media, or audit workspaces, accounts, campaigns, labels, categories, or team-members on their ContentStudio account.
+version: 1.1.0
 homepage: https://api.contentstudio.io/guide
 metadata: {"openclaw":{"emoji":"📅","requires":{"bins":["contentstudio"],"env":["CONTENTSTUDIO_API_KEY"]}}}
 ---
@@ -84,7 +84,9 @@ contentstudio workspaces:use <workspace_id>
 
 The CLI silently defaults to the active workspace (whatever was set by `workspaces:use`). That default is fine for **read-only** calls (`workspaces:list`, `accounts:list`, `posts:list`, `media:list`, etc.) — just use the active workspace.
 
-But for any **mutating** action — `accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `posts:create`, `posts:update`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`, `workspaces:update`, `workspaces:delete`, `labels:create`, `labels:update`, `labels:delete`, `campaigns:create`, `campaigns:update`, `campaigns:delete`, `team:add`, `team:update`, `team:remove`, `accounts:remove` — you MUST confirm the workspace with the user first, even if a workspace is already active. Don't assume the active workspace is the one they want to mutate.
+But for any **mutating** action — `accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `accounts:remove`, `posts:create`, `posts:update`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`, `workspaces:update`, `workspaces:delete`, `labels:create`, `labels:update`, `labels:delete`, `campaigns:create`, `campaigns:update`, `campaigns:delete`, `team:add`, `team:update`, `team:remove`, and every `inbox:*` write (`inbox:send`, `inbox:comment-add`, `inbox:comment-delete`, `inbox:review-reply`, `inbox:update`, `inbox:tag-*`, …) — you MUST confirm the workspace with the user first, even if a workspace is already active. Don't assume the active workspace is the one they want to mutate.
+
+> **Inbox writes are customer-facing.** `inbox:send`, `inbox:comment-add`, and `inbox:review-reply` publish text to a real person on a real social platform, and there is no undo on the provider side. Always `--dry-run` first, show the exact message text to the user, and get explicit approval before sending. Never compose-and-send a reply to a customer in one step.
 
 (`workspaces:create` is the one write that is **not** workspace-scoped — it creates a brand-new workspace and ignores the active one.)
 
@@ -372,6 +374,162 @@ For labels and campaigns: `--name` ≤100 chars; `--color` is one of the enum va
 |---------|---------|
 | `facebook:text-backgrounds` | List Facebook colored-background presets (use `id` as `facebook_options.facebook_background_id` on plain-text posts) |
 
+### Social Inbox
+
+The inbox unifies three kinds of item into **elements**: `conversation` (DMs),
+`post` (a post with comments), and `review`. `inbox:list` is the entry point —
+everything else takes an id it returned.
+
+### ⚠️ Which id to pass — verified against the live API
+
+**Rule: use `element_details.element_id` everywhere.** It is the only id that
+works across every element-scoped command. Despite the parameter being *named*
+`element_refs`, the bulk-update and tag endpoints reject the `element_ref`
+value with a 404 `INBOX_UPSTREAM_ERROR` ("Inbox details not found").
+
+| Command | `element_details.element_id` | `element_ref` |
+|---------|:---:|:---:|
+| `inbox:update` (`--element`) | ✅ | ❌ 404 |
+| `inbox:tag-attach` / `inbox:tag-detach` | ✅ | ❌ 404 |
+| `inbox:mark-read` | ✅ | ✅ |
+| `inbox:contact` / `inbox:contact-update` | ✅ | ✅ |
+| `inbox:messages` / `send` / `notes` / `note-add` / `bookmarks` | ✅ (`t_…` form) | ❌ empty list |
+| `inbox:comments` / `inbox:comment-add` | use `element_details.post_id` | ❌ empty list |
+
+Values look like:
+
+- `element_details.element_id` — `t_10000000000000001` (conversation) or
+  `100000000000000001_200000000000000002` (post)
+- `element_details.post_id` — `900000000000001_100000000000000001`
+- `element_ref` — `6a0000000000000000000001` (Mongo-style; **avoid**)
+
+**The two failure modes are silent in different ways.** Read endpoints return
+`{"ok": true, "data": []}` — a successful empty read. Write endpoints return a
+404 that *looks* like the item was deleted. Neither means the conversation is
+missing. If either happens, check the id before telling the user anything.
+
+Also needed for most writes:
+
+- **`platform_id`** — the connected social account the item belongs to. The
+  backend replies through that account's token. It is on every `inbox:list`
+  row as `platform_id`, or from `accounts:list`.
+- The platform field on a list row is **`platform`** (not `platform_type`),
+  but the write commands take `--platform-type`.
+
+**Reading**
+
+| Command | Purpose |
+|---------|---------|
+| `inbox:list` | Search the inbox. `--type conversation\|post\|review` (repeatable), `--action all\|marked_done\|archived\|assigned`, `--search`, `--tag`, `--channels '{"facebook":["<acct>"]}'`, `--page`, `--limit` |
+| `inbox:summary` | Counts per bucket — cheap way to answer "anything unread?" |
+| `inbox:messages <conversation_id>` | Messages in a DM thread. Id = `element_details.element_id`. `--sort-order asc\|desc` |
+| `inbox:comments <post_id>` | A post's comments (threaded). Id = `element_details.post_id` |
+| `inbox:notes <conversation_id>` | Internal notes (team-only). Id = `element_details.element_id`. Paginated |
+| `inbox:bookmarks <conversation_id>` | Starred messages. Id = `element_details.element_id`. Paginated |
+| `inbox:contact <element_ref>` | Contact profile behind an element |
+| `inbox:tags` | The workspace's inbox tag catalogue |
+
+**Replying — customer-facing, confirm before sending**
+
+| Command | Purpose |
+|---------|---------|
+| `inbox:send <conversation_id>` | Send a DM (id = `element_details.element_id`). Needs `--platform-type facebook\|instagram`, `--platform-id`, and `--message` and/or `--file`. `--idempotency-key` de-dupes a retry |
+| `inbox:comment-add <post_id>` | Comment on a post. `--comment-id` makes it a threaded reply; `--private-reply` sends a Facebook DM instead; `--attachment <path>` attaches a file |
+| `inbox:review-reply <review_id>` | Add or replace a review reply (upsert). `--platform-id`, `--reply` |
+| `inbox:note-add <conversation_id>` | Add an internal note. `--mention <user_id>` (repeatable). Not customer-visible |
+
+**Triage and moderation**
+
+| Command | Purpose |
+|---------|---------|
+| `inbox:mark-read <element_ref>` | Mark read (idempotent) |
+| `inbox:update` | Bulk state change. `--element` (repeatable, **max 100**) plus **exactly one** of `--status done\|pending`, `--archived`, `--assigned` (pair with `--assigned-to '{"id":"<user>"}'`) |
+| `inbox:comment-hide` / `inbox:comment-unhide <comment_id>` | Hide/unhide. Unhide needs `--platform-type` + `--platform-id` |
+| `inbox:comment-like` / `inbox:comment-unlike <comment_id>` | Facebook only |
+| `inbox:comment-delete <comment_id>` | Delete. Needs `--platform-type` + `--platform-id`; LinkedIn also needs `--comment-urn` |
+| `inbox:star` / `inbox:unstar <message_id>` | Star a message |
+| `inbox:message-delete <message_id>` | Soft-delete a message. `--platform-id` |
+| `inbox:review-reply-delete <review_id>` | Remove a review reply. `--platform-id` |
+| `inbox:contact-update <element_ref>` | `--platform-id` plus any of `--name`, `--email`, `--phone`, `--company` |
+
+**Tags**
+
+| Command | Purpose |
+|---------|---------|
+| `inbox:tag-create` | `--name` (≤50), `--color` — a **hex** value like `#33aa55`. (Older tags may display `color_1`, but the API now rejects that format.) |
+| `inbox:tag-update <tag_id>` | `--name` and/or `--color` |
+| `inbox:tag-delete` | `--tag <id>` (repeatable, bulk) |
+| `inbox:tag-merge` | Fold tags into a new one: `--name`, `--color`, `--tag` (repeatable) |
+| `inbox:tag-attach <element_ref>` | `--tag` (repeatable), `--platform-id`, `--inbox-type` |
+| `inbox:tag-detach <element_ref> <tag_id>` | `--platform-id`, `--inbox-type` |
+
+**Inbox pagination note.** Inbox list commands use `--limit` rather than
+`--per-page` (`--per-page` is accepted as an alias). The pagination rules in
+the section above apply unchanged: if `pagination.has_more` is true, do not
+report the first page as the whole inbox.
+
+> **The inbox caps page size at 200.** This is the one place the general
+> "auto-paginate with `--per-page <total>`" advice does not apply — the
+> pagination footer may suggest a number above 200, and the API will reject it.
+> For inboxes larger than 200, loop `--page 1`, `--page 2`, … up to
+> `pagination.last_page` instead.
+
+**Inbox limits enforced by the API** (the CLI rejects these before sending, so
+a `ConfigError` here is not a server failure):
+
+| Limit | Where |
+|-------|-------|
+| `--limit` ≤ 200 | `inbox:list`, `inbox:messages`, `inbox:comments` |
+| ≤ 100 `--element` refs per call | `inbox:update` |
+| Exactly **one** operation per call | `inbox:update` — `--status`, `--archived`, and `--assigned` are mutually exclusive; run separate commands |
+| Tag name ≤ 50 chars | `inbox:tag-create` |
+
+**Partial success on bulk updates.** `inbox:update` can return HTTP `207`: some
+elements updated, others not, with the failures listed in `missing_ids`. The
+CLI reports this as a warning rather than a success. If `missing_ids` is
+non-empty, tell the user which elements did **not** change — do not report the
+batch as fully applied.
+
+**`inbox:contact-update` is wider than it looks.** A contact is a *person*, not
+a per-element attribute: updating it changes that contact on **every** element
+for that account in the workspace, not just the `element_ref` you passed. The
+response's `updated_count` says how many. Tell the user this before running it.
+
+**`inbox:contact` returns personal data.** Email and phone of an end customer.
+Return only the fields the user actually asked for; don't dump the whole record
+into a summary or paste it somewhere persistent without being asked.
+
+**`inbox:messages` mixes activity events into the thread.** Entries with
+`message: null` and an `action` block (`MARKED_AS_DONE`, `PENDING`, `ARCHIVED`,
+…) are audit records of what a teammate did, not messages from the customer.
+They count toward `total_messages` and toward pagination. **Do not count them
+as messages, quote them as customer text, or treat one as the latest reply** —
+filter on `action == null` when you mean "actual messages". The CLI renders
+them as `— marked as done —` rows in human mode.
+
+**Replies are nested, not paginated.** In `inbox:comments`, replies live under
+each thread's `children` — they are not separate top-level rows. Paging counts
+threads (`total_threads`), not individual comments, so "12 comments" from the
+pagination block means 12 *threads* and there may be many more replies inside.
+
+**A `409` on a send is not a normal failure.** For `inbox:send` and
+`inbox:comment-add` the API says the outcome "cannot be determined" — the
+message may or may not have reached the customer. The CLI surfaces this as
+`ConflictError`. **Do not retry automatically.** Read the conversation back
+with `inbox:messages` to see whether it landed, and tell the user what you
+found before sending anything again.
+
+**Confirming a send.** `inbox:send` returns `sent_message.id_status`. When it is
+`unavailable`, the platform accepted the message but returned no id, so there
+is nothing to reconcile against later — report it as sent-but-unconfirmed
+rather than fully confirmed.
+
+**Inbox-specific errors.** A `502` from any `inbox:*` command means the
+upstream inbox service is unavailable, not that the item is missing. Retry
+after a short backoff rather than telling the user the conversation is gone.
+An empty `inbox:list` result is a successful empty read — say "no matching
+conversations", not "not found".
+
 ---
 
 ## Examples
@@ -611,6 +769,63 @@ contentstudio --json comments:add <post_id> "Double-check the link" --note
 contentstudio --json --workspace <other_ws_id> posts:list --per-page 3
 ```
 
+### Triage the inbox: find unanswered DMs and reply to one
+
+```bash
+# 1. Cheap check first — is there anything to do?
+contentstudio --json inbox:summary
+
+# 2. List open conversations
+contentstudio --json inbox:list --type conversation --action all --limit 20
+# → per row: element_ref, platform, platform_id,
+#            element_details.element_id  ← THIS is the conversation id
+
+# 3. Read the thread. Use element_details.element_id (looks like t_1234...),
+#    NOT element_ref — element_ref here returns an empty list.
+contentstudio --json inbox:messages t_10000000000000001 --sort-order desc --limit 10
+
+# 4. Find the account that owns the thread (gives you --platform-id)
+contentstudio --json accounts:list --platform facebook
+
+# 5. Preview the reply — ALWAYS do this, and show the text to the user
+contentstudio --json inbox:send <conversation_id> \
+  --platform-type facebook \
+  --platform-id <account_id> \
+  --message "Hi! Your order shipped this morning — tracking is on the way." \
+  --dry-run
+
+# 6. Only after the user approves, drop --dry-run
+```
+
+### Reply to a comment, then hide a spam one
+
+```bash
+# Threaded reply. <post_id> is element_details.post_id, not element_ref.
+contentstudio --json inbox:comment-add <post_id> \
+  --platform-type facebook --platform-id <account_id> \
+  --comment-id <comment_id> \
+  --message "Thanks for the kind words!" --dry-run
+
+# Hide spam rather than deleting it (reversible)
+contentstudio --json inbox:comment-hide <comment_id> --dry-run
+```
+
+### Clear a batch of conversations
+
+```bash
+contentstudio --json inbox:update \
+  --element <element_ref_1> --element <element_ref_2> \
+  --status done --dry-run
+```
+
+### Tag a conversation for follow-up
+
+```bash
+contentstudio --json inbox:tags                       # find or create a tag id
+contentstudio --json inbox:tag-attach <element_ref> \
+  --tag <tag_id> --platform-id <account_id> --inbox-type conversation --dry-run
+```
+
 ---
 
 ## Error handling
@@ -620,6 +835,7 @@ contentstudio --json --workspace <other_ws_id> posts:list --per-page 3
 | `AuthError` | 401, 403 | Run `auth:login` with a valid key. |
 | `NotFoundError` | 404 | The resource doesn't exist or isn't in this workspace. |
 | `ValidationError` | 422 | Flattened Laravel-style field errors from the API. |
+| `ConflictError` | 409 | Duplicate resource, **or** a send whose outcome is undetermined. Do not blindly retry a send — verify first. |
 | `RateLimitError` | 429 | Wait a moment and retry. |
 | `BackendError` | 5xx or network | Retry after a short backoff. |
 | `ConfigError` | — (local) | Missing API key / workspace; run `auth:login` or pass flags. |
@@ -633,6 +849,5 @@ contentstudio --json --workspace <other_ws_id> posts:list --per-page 3
 
 ---
 
-## Version
-
-1.0.0
+The authoritative version for this skill is the `version:` field in the
+frontmatter at the top of this file.

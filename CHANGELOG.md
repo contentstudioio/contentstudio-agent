@@ -1,6 +1,106 @@
 # Changelog
 
-## Unreleased — posts:update, approval workflows, LinkedIn polls & collaborators
+## 1.1.0 — Social Inbox support, posts:update, and approval workflows
+
+### Social Inbox
+
+The inbox endpoints are now part of the ContentStudio public API, so the CLI and
+the agent skill cover them. 30 new commands under the `inbox:` namespace.
+
+**Reading** — `inbox:list` (search across conversations, commented posts, and
+reviews), `inbox:summary` (counts per bucket), `inbox:messages`, `inbox:comments`,
+`inbox:notes`, `inbox:bookmarks`, `inbox:contact`, `inbox:tags`.
+
+**Replying** — `inbox:send` (DM, with optional attachment), `inbox:comment-add`
+(comment, threaded reply, or Facebook private reply), `inbox:review-reply`,
+`inbox:note-add`. All accept `--idempotency-key` where the API supports it.
+
+**Triage** — `inbox:mark-read`, `inbox:update` (bulk done/pending, archive,
+assign), `inbox:star` / `inbox:unstar`, `inbox:contact-update`.
+
+**Moderation** — `inbox:comment-hide` / `-unhide`, `inbox:comment-like` /
+`-unlike`, `inbox:comment-delete`, `inbox:message-delete`,
+`inbox:review-reply-delete`.
+
+**Tags** — `inbox:tag-create`, `-update`, `-delete` (bulk), `-merge`, `-attach`,
+`-detach`.
+
+Verified end-to-end against the live API (a real workspace, 120 inbox items);
+the notes below record where the published spec and reality diverge.
+
+**Identifier gotcha — read this first.** Pass `element_details.element_id`, not
+the top-level `element_ref`. Despite the request field being *named*
+`element_refs`, `inbox:update` and the tag-attach/detach endpoints reject an
+`element_ref` with a 404 `INBOX_UPSTREAM_ERROR` ("Inbox details not found"),
+and `inbox:messages` / `inbox:comments` return an empty list for it rather than
+an error. `element_id` works everywhere. Both docs now lead with this.
+
+Notes:
+
+- **The inbox service uses its own response envelope.** Unlike the rest of the
+  v1 API it does not return `{status, message, data}` — each endpoint returns
+  its collection under its own key (`elements`, `messages`, `comments`, `tags`,
+  `contact`, `element_counts`) with paginator fields whose names also differ
+  (`total_count`/`current_page`/`last_page`/`limit` for search,
+  `total_messages`/`page`/`page_count` for messages, `total_threads` for post
+  comments). The inbox wrappers normalise all of this, so `--json` output keeps
+  the same `{ok, data, pagination}` envelope as every other command.
+- Table columns use field names verified against live responses: a list row
+  carries `platform` (not `platform_type`), a conversation's latest text is in
+  `last_message.message` and a post's in `last_comment.message`, and the sender
+  is `from[0]` — an ARRAY whose `name` is often null with `first_name` /
+  `last_name` populated. `inbox:list` also shows an UNREAD column.
+- `inbox:notes` and `inbox:bookmarks` are paginated (`total`, `page`, `limit`);
+  the spec documents neither a schema nor pagination for them. Both now accept
+  `--page` / `--limit` and return a `pagination` block.
+- Inbox tag colors are hex (`#33aa55`). Some existing tags display `color_1`,
+  but the API rejects that format on write.
+- Post-comment paging is driven by `total_threads` (top-level threads), not
+  `total_comment_count` (which counts replies too and would overstate the page
+  count).
+- API limits are enforced client-side, so an invalid call fails immediately with
+  a `ConfigError` instead of a round-trip 422: `--limit` ≤ 200 on every inbox
+  list, ≤ 100 element refs per `inbox:update`, tag names ≤ 50 chars, and
+  **exactly one** operation per `inbox:update` (`--status`, `--archived` and
+  `--assigned` are mutually exclusive — the API returns 422 otherwise).
+- `inbox:update` understands HTTP `207` partial success: when the response
+  carries `missing_ids`, the CLI warns and names the elements it could not
+  update rather than reporting the whole batch as applied.
+- New `ConflictError` (HTTP 409, exit code 7). The inbox send endpoints answer
+  409 when an idempotency conflict means the outcome "cannot be determined" —
+  the message may already have reached the customer. The error carries an
+  explicit do-not-blindly-retry hint, and SKILL.md tells the agent to read the
+  conversation back before resending. 409 previously fell through to a bare
+  `ContentStudioError` with no hint at all.
+- `inbox:contact-update` now says what it really does: a contact is a person,
+  not a per-element attribute, so the update applies to EVERY element for that
+  contact on that account. The command reports the API's `updated_count`.
+- `inbox:send` and `inbox:comment-add` report what the API says happened rather
+  than what was requested — `sent_comment.resource_type` distinguishes a comment
+  from a private reply, and `sent_message.id_status: "unavailable"` is surfaced
+  as a warning that delivery cannot be confirmed by id.
+- SKILL.md documents that `inbox:comments` nests replies under each thread's
+  `children` and pages by threads, and that `inbox:contact` returns end-customer
+  PII (email, phone) that should not be echoed wholesale.
+- Note for agents: the inbox's 200-item page cap is the one case where the
+  general "auto-paginate with `--per-page <total>`" guidance breaks; SKILL.md
+  now says to loop `--page` instead.
+- Every inbox write supports `--dry-run`, and the preview now percent-encodes
+  path segments so it shows the URL that would actually be requested — element
+  refs can contain `:` and `/`.
+- Inbox lists page with `--limit` / `--page` (the API's own parameter names);
+  `--per-page` is accepted as an alias so the existing pagination guidance holds.
+- SKILL.md flags inbox writes as customer-facing: they publish to a real person
+  with no undo, so the agent must preview and get approval before sending.
+- Internal: `Client` gained a `patch()` method (three inbox endpoints use PATCH;
+  the client had no PATCH support at all). Inbox responses are unwrapped by
+  dedicated helpers rather than the generic `data` unwrapper. `emitDryRun` /
+  `parseJsonOption` moved from `commands/crud.ts` into `cliCtx.ts` so both
+  modules share one copy.
+- SKILL.md's trailing `## Version` section is gone — it had drifted to `1.0.0`
+  while the frontmatter said `1.0.10`. The frontmatter is now the single source.
+
+### posts:update, approval workflows, LinkedIn polls & collaborators
 
 - New `accounts:remove <account_id>` command — `DELETE /workspaces/{w}/accounts/{account_id}` disconnects a social account (`account_id` is the account's `_id` from `accounts:list`). Requires the `save_social` permission (403 otherwise); 404 when the account isn't found, 422 when removal fails. Carries `--dry-run` like the other mutating commands.
 - New `posts:update <post_id>` command — PUTs `/workspaces/{w}/posts/{post_id}` with the **same body/flags** as `posts:create` (shared option set + body builder). The backend rejects the update (422) once the post is `published` or `processing`.

@@ -6,7 +6,27 @@ import {
   addBlueskyAccount,
   addComment,
   addFacebookGroup,
+  addInboxNote,
+  addInboxPostComment,
   addTeamMember,
+  attachInboxTags,
+  bulkUpdateInboxElements,
+  deleteInboxComment,
+  deleteInboxMessage,
+  deleteInboxTags,
+  detachInboxTag,
+  createInboxTag,
+  getInboxContact,
+  inboxSummary,
+  listInboxPostComments,
+  listInboxTags,
+  listInboxMessages,
+  markInboxElementRead,
+  searchInboxElements,
+  sendInboxMessage,
+  setInboxCommentHidden,
+  setInboxMessageBookmark,
+  updateInboxTag,
   connectAccount,
   createCampaign,
   createLabel,
@@ -39,6 +59,7 @@ import {
   BackendError,
   ConfigError,
   NotFoundError,
+  ConflictError,
   RateLimitError,
   ValidationError,
 } from "../src/errors";
@@ -127,6 +148,19 @@ describe("Error mapping", () => {
     await expect(createPost(mkClient(), "ws-1", {})).rejects.toBeInstanceOf(
       ValidationError,
     );
+  });
+
+  it("409 → ConflictError with a do-not-retry hint (send outcome undetermined)", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/inbox/conversations/c1/messages`)
+      .reply(409, { message: "Idempotency conflict" });
+    const err = await sendInboxMessage(mkClient(), "ws-1", "c1", {
+      platformType: "facebook",
+      platformId: "acc-9",
+      message: "hi",
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictError);
+    expect(err.hint).toMatch(/not blindly retry/i);
   });
 
   it("429 retries up to retries then raises RateLimitError", async () => {
@@ -674,5 +708,445 @@ describe("Account write wrappers", () => {
     await expect(
       removeAccount(mkClient(), "ws-1", "missing"),
     ).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe("Inbox — elements, state, contacts", () => {
+  // The inbox service does not use the {status,message,data} envelope — it
+  // returns the collection under its own key with its own paginator names.
+  it("searchInboxElements unwraps `elements` and normalises `total_count`", async () => {
+    let received: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/inbox/elements/search`, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, {
+        status: true,
+        elements: [{ element_ref: "conv:1" }, { element_ref: "conv:2" }],
+        total_count: 45,
+        current_page: 1,
+        last_page: 3,
+        limit: 20,
+      });
+
+    const res = await searchInboxElements(mkClient(), "ws-1", {
+      inbox_types: ["conversation"],
+      search_term: "refund",
+      limit: 20,
+    });
+
+    expect(received).toEqual({
+      inbox_types: ["conversation"],
+      search_term: "refund",
+      limit: 20,
+    });
+    expect(res.data).toEqual([{ element_ref: "conv:1" }, { element_ref: "conv:2" }]);
+    expect(res.pagination).toMatchObject({
+      current_page: 1,
+      per_page: 20,
+      total: 45,
+      last_page: 3,
+      has_more: true,
+    });
+  });
+
+  it("searchInboxElements reports has_more=false on the last page", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/inbox/elements/search`)
+      .reply(200, {
+        status: true,
+        elements: [{ element_ref: "conv:9" }],
+        total_count: 41,
+        current_page: 3,
+        last_page: 3,
+        limit: 20,
+      });
+    const res = await searchInboxElements(mkClient(), "ws-1", { page: 3 });
+    expect(res.pagination!.has_more).toBe(false);
+    expect(res.pagination!.to).toBe(41);
+  });
+
+  it("searchInboxElements treats an empty result as a successful empty read", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/inbox/elements/search`)
+      .reply(200, { status: true, elements: [], total_count: 0 });
+    const res = await searchInboxElements(mkClient(), "ws-1", {});
+    expect(res.data).toEqual([]);
+    expect(res.pagination!.total).toBe(0);
+    expect(res.pagination!.has_more).toBe(false);
+  });
+
+  it("inboxSummary unwraps `element_counts`", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/inbox/elements/summary`)
+      .reply(200, { status: true, element_counts: { conversation: 4, review: 1 } });
+    const counts: any = await inboxSummary(mkClient(), "ws-1", {});
+    expect(counts).toEqual({ conversation: 4, review: 1 });
+  });
+
+  it("bulkUpdateInboxElements PATCHes /inbox/elements", async () => {
+    let received: any;
+    nock(BASE)
+      .patch(`${PATH}/workspaces/ws-1/inbox/elements`, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, envelope({ updated: 2 }));
+
+    await bulkUpdateInboxElements(mkClient(), "ws-1", {
+      element_refs: ["a", "b"],
+      status: "done",
+    });
+    expect(received).toEqual({ element_refs: ["a", "b"], status: "done" });
+  });
+
+  it("getInboxContact unwraps the `contact` key", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/inbox/elements/conv%3A1/contact`)
+      .query(true)
+      .reply(200, { status: true, contact: { name: "Jane", email: "j@x.co" } });
+    const contact: any = await getInboxContact(mkClient(), "ws-1", "conv:1");
+    expect(contact).toEqual({ name: "Jane", email: "j@x.co" });
+  });
+
+  it("bulkUpdateInboxElements rejects more than one operation (API 422 rule)", () => {
+    expect(() =>
+      bulkUpdateInboxElements(mkClient(), "ws-1", {
+        element_refs: ["a"],
+        status: "done",
+        archived: true,
+      }),
+    ).toThrow(ConfigError);
+  });
+
+  it("bulkUpdateInboxElements rejects zero operations", () => {
+    expect(() =>
+      bulkUpdateInboxElements(mkClient(), "ws-1", { element_refs: ["a"] }),
+    ).toThrow(ConfigError);
+  });
+
+  it("bulkUpdateInboxElements enforces the 100-ref cap", () => {
+    expect(() =>
+      bulkUpdateInboxElements(mkClient(), "ws-1", {
+        element_refs: Array.from({ length: 101 }, (_, i) => `r${i}`),
+        status: "done",
+      }),
+    ).toThrow(ConfigError);
+  });
+
+  it("bulkUpdateInboxElements surfaces a 207 partial update via missing_ids", async () => {
+    nock(BASE)
+      .patch(`${PATH}/workspaces/ws-1/inbox/elements`)
+      .reply(207, { status: true, missing_ids: ["r2"] });
+    const res: any = await bulkUpdateInboxElements(mkClient(), "ws-1", {
+      element_refs: ["r1", "r2"],
+      status: "done",
+    });
+    expect(res.missing_ids).toEqual(["r2"]);
+  });
+
+  // searchInboxElements is async, so its guard surfaces as a rejection rather
+  // than a synchronous throw. Either way run() maps it to a ConfigError exit.
+  it("searchInboxElements refuses a limit above the API cap of 200", async () => {
+    await expect(
+      searchInboxElements(mkClient(), "ws-1", { limit: 500 }),
+    ).rejects.toBeInstanceOf(ConfigError);
+  });
+
+  it("listInboxMessages refuses a limit above the API cap of 200", async () => {
+    await expect(
+      listInboxMessages(mkClient(), "ws-1", "c1", { limit: 201 }),
+    ).rejects.toBeInstanceOf(ConfigError);
+  });
+
+  it("createInboxTag enforces the 50-character tag name cap", () => {
+    expect(() =>
+      createInboxTag(mkClient(), "ws-1", {
+        tag_name: "x".repeat(51),
+        tag_color: "#fff",
+      }),
+    ).toThrow(ConfigError);
+  });
+
+  it("markInboxElementRead percent-encodes the element ref", async () => {
+    const scope = nock(BASE)
+      .put(`${PATH}/workspaces/ws-1/inbox/elements/conv%3Aa%2Fb/read`)
+      .reply(200, envelope({ ok: true }));
+    await markInboxElementRead(mkClient(), "ws-1", "conv:a/b");
+    expect(scope.isDone()).toBe(true);
+  });
+});
+
+describe("Inbox — conversations and messages", () => {
+  it("listInboxMessages forwards page / limit / sort_order", async () => {
+    let qs: any = {};
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/inbox/conversations/c1/messages`)
+      .query((q) => {
+        qs = q;
+        return true;
+      })
+      .reply(200, { status: true, messages: [] });
+    await listInboxMessages(mkClient(), "ws-1", "c1", {
+      page: 2,
+      limit: 50,
+      sort_order: "asc",
+    });
+    expect(qs).toMatchObject({ page: "2", limit: "50", sort_order: "asc" });
+  });
+
+  it("listInboxMessages unwraps `messages` and maps total_messages/page_count", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/inbox/conversations/c1/messages`)
+      .query(true)
+      .reply(200, {
+        status: true,
+        messages: [{ _id: "m1" }, { _id: "m2" }],
+        total_messages: 30,
+        page: 1,
+        page_count: 3,
+      });
+    const res = await listInboxMessages(mkClient(), "ws-1", "c1", { limit: 10 });
+    expect(res.data).toEqual([{ _id: "m1" }, { _id: "m2" }]);
+    expect(res.pagination).toMatchObject({
+      current_page: 1,
+      per_page: 10,
+      total: 30,
+      last_page: 3,
+      has_more: true,
+    });
+  });
+
+  it("sendInboxMessage posts multipart and sets Idempotency-Key", async () => {
+    let body = "";
+    let idem: unknown;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/inbox/conversations/c1/messages`, (b) => {
+        body = typeof b === "string" ? b : JSON.stringify(b);
+        return true;
+      })
+      .reply(function () {
+        // nock surfaces request headers as string[].
+        const h = this.req.headers["idempotency-key"];
+        idem = Array.isArray(h) ? h[0] : h;
+        return [200, envelope({ sent: true })];
+      });
+
+    await sendInboxMessage(mkClient(), "ws-1", "c1", {
+      platformType: "facebook",
+      platformId: "acc-9",
+      message: "hello",
+      idempotencyKey: "key-1",
+    });
+
+    expect(body).toContain("platform_type");
+    expect(body).toContain("facebook");
+    expect(body).toContain("hello");
+    expect(idem).toBe("key-1");
+  });
+
+  it("sendInboxMessage rejects an empty DM before hitting the network", () => {
+    // Guard runs synchronously — no request is ever built, so nock sees nothing.
+    expect(() =>
+      sendInboxMessage(mkClient(), "ws-1", "c1", {
+        platformType: "facebook",
+        platformId: "acc-9",
+      }),
+    ).toThrow(ConfigError);
+  });
+
+  it("setInboxMessageBookmark PUTs to star and DELETEs to unstar", async () => {
+    const put = nock(BASE)
+      .put(`${PATH}/workspaces/ws-1/inbox/messages/m1/bookmark`)
+      .reply(200, envelope({}));
+    await setInboxMessageBookmark(mkClient(), "ws-1", "m1", true);
+    expect(put.isDone()).toBe(true);
+
+    const del = nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/inbox/messages/m1/bookmark`)
+      .reply(200, envelope({}));
+    await setInboxMessageBookmark(mkClient(), "ws-1", "m1", false);
+    expect(del.isDone()).toBe(true);
+  });
+
+  it("deleteInboxMessage sends platform_id as a query param", async () => {
+    let qs: any = {};
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/inbox/messages/m1`)
+      .query((q) => {
+        qs = q;
+        return true;
+      })
+      .reply(200, envelope({}));
+    await deleteInboxMessage(mkClient(), "ws-1", "m1", { platform_id: "acc-9" });
+    expect(qs.platform_id).toBe("acc-9");
+  });
+
+  it("addInboxNote posts JSON with mentioned_users", async () => {
+    let received: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/inbox/conversations/c1/notes`, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, envelope({ _id: "n1" }));
+    await addInboxNote(mkClient(), "ws-1", "c1", {
+      message: "internal",
+      platform_type: "facebook",
+      platform_id: "acc-9",
+      mentioned_users: ["u1"],
+    });
+    expect(received.mentioned_users).toEqual(["u1"]);
+  });
+});
+
+describe("Inbox — comments and moderation", () => {
+  it("listInboxPostComments pages on total_threads, not total_comment_count", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/inbox/posts/p1/comments`)
+      .query(true)
+      .reply(200, {
+        status: true,
+        comments: [{ _id: "c1" }],
+        total_comment_count: 90, // includes replies — must NOT drive paging
+        total_threads: 12,
+      });
+    const res = await listInboxPostComments(mkClient(), "ws-1", "p1", { limit: 5 });
+    expect(res.data).toEqual([{ _id: "c1" }]);
+    expect(res.pagination!.total).toBe(12);
+    expect(res.pagination!.last_page).toBe(3);
+  });
+
+  it("addInboxPostComment sends comment_id for a threaded reply", async () => {
+    let body = "";
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/inbox/posts/p1/comments`, (b) => {
+        body = typeof b === "string" ? b : JSON.stringify(b);
+        return true;
+      })
+      .reply(200, envelope({}));
+    await addInboxPostComment(mkClient(), "ws-1", "p1", {
+      platformType: "facebook",
+      platformId: "acc-9",
+      message: "thanks!",
+      commentId: "cmt-1",
+    });
+    expect(body).toContain("comment_id");
+    expect(body).toContain("cmt-1");
+  });
+
+  it("deleteInboxComment forwards platform_type, platform_id and comment_urn", async () => {
+    let qs: any = {};
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/inbox/comments/cmt-1`)
+      .query((q) => {
+        qs = q;
+        return true;
+      })
+      .reply(200, envelope({}));
+    await deleteInboxComment(mkClient(), "ws-1", "cmt-1", {
+      platform_type: "linkedin",
+      platform_id: "acc-9",
+      comment_urn: "urn:li:comment:(x,y)",
+    });
+    expect(qs).toMatchObject({
+      platform_type: "linkedin",
+      platform_id: "acc-9",
+      comment_urn: "urn:li:comment:(x,y)",
+    });
+  });
+
+  it("hide needs no params; unhide sends platform_type + platform_id", async () => {
+    const hide = nock(BASE)
+      .put(`${PATH}/workspaces/ws-1/inbox/comments/cmt-1/hidden`)
+      .reply(200, envelope({}));
+    await setInboxCommentHidden(mkClient(), "ws-1", "cmt-1", true);
+    expect(hide.isDone()).toBe(true);
+
+    let qs: any = {};
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/inbox/comments/cmt-1/hidden`)
+      .query((q) => {
+        qs = q;
+        return true;
+      })
+      .reply(200, envelope({}));
+    await setInboxCommentHidden(mkClient(), "ws-1", "cmt-1", false, {
+      platform_type: "facebook",
+      platform_id: "acc-9",
+    });
+    expect(qs).toMatchObject({ platform_type: "facebook", platform_id: "acc-9" });
+  });
+});
+
+describe("Inbox — tags", () => {
+  it("listInboxTags unwraps the `tags` key", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/inbox/tags`)
+      .reply(200, { status: true, tags: [{ _id: "t1", tag_name: "VIP" }], total: 1 });
+    const tags: any = await listInboxTags(mkClient(), "ws-1");
+    expect(Array.isArray(tags)).toBe(true);
+    expect(tags[0].tag_name).toBe("VIP");
+  });
+
+  it("updateInboxTag PATCHes the tag", async () => {
+    let received: any;
+    nock(BASE)
+      .patch(`${PATH}/workspaces/ws-1/inbox/tags/t1`, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, envelope({}));
+    await updateInboxTag(mkClient(), "ws-1", "t1", { tag_name: "VIP" });
+    expect(received).toEqual({ tag_name: "VIP" });
+  });
+
+  it("deleteInboxTags sends tag_ids as a DELETE body", async () => {
+    let received: any;
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/inbox/tags`, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, envelope({}));
+    await deleteInboxTags(mkClient(), "ws-1", ["t1", "t2"]);
+    expect(received).toEqual({ tag_ids: ["t1", "t2"] });
+  });
+
+  it("attachInboxTags posts tags + inbox_type", async () => {
+    let received: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/inbox/elements/conv%3A1/tags`, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, envelope({}));
+    await attachInboxTags(mkClient(), "ws-1", "conv:1", {
+      tags: ["t1"],
+      platform_id: "acc-9",
+      inbox_type: "conversation",
+    });
+    expect(received).toEqual({
+      tags: ["t1"],
+      platform_id: "acc-9",
+      inbox_type: "conversation",
+    });
+  });
+
+  it("detachInboxTag encodes the ref and sends both query params", async () => {
+    let qs: any = {};
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/inbox/elements/conv%3A1/tags/t1`)
+      .query((q) => {
+        qs = q;
+        return true;
+      })
+      .reply(200, envelope({}));
+    await detachInboxTag(mkClient(), "ws-1", "conv:1", "t1", {
+      platform_id: "acc-9",
+      inbox_type: "conversation",
+    });
+    expect(qs).toMatchObject({ platform_id: "acc-9", inbox_type: "conversation" });
   });
 });

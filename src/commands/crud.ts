@@ -23,36 +23,13 @@ import {
 } from "../api";
 import { ConfigError } from "../errors";
 import * as out from "../output";
-import { buildClient, resolveWorkspace, run } from "../cliCtx";
-
-function emitDryRun(
-  g: any,
-  endpoint: string,
-  body: Record<string, unknown> | undefined,
-  label: string,
-): void {
-  out.emitSuccess(
-    { dry_run: true, endpoint, body: body ?? {} },
-    g,
-    () => {
-      out.info(`DRY RUN — would ${label}`);
-      console.log(JSON.stringify(body ?? {}, null, 2));
-    },
-  );
-}
-
-function parseJsonOption(raw: unknown, flag: string): Record<string, unknown> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(String(raw));
-  } catch (e) {
-    throw new ConfigError(`${flag}: invalid JSON — ${(e as Error).message}`);
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new ConfigError(`${flag}: JSON must be an object.`);
-  }
-  return parsed as Record<string, unknown>;
-}
+import {
+  buildClient,
+  emitDryRun,
+  parseJsonOption,
+  resolveWorkspace,
+  run,
+} from "../cliCtx";
 
 export function registerCrud<T>(yargs: Argv<T>): Argv<T> {
   return registerAccounts(registerTeam(registerCampaigns(registerLabels(yargs))));

@@ -18,10 +18,18 @@ function run(
   args: string[],
   envOverride: Record<string, string> = {},
 ): { code: number; stdout: string; stderr: string } {
-  const env = {
+  // Keep this suite hermetic: a real CONTENTSTUDIO_* var in the ambient
+  // environment (a developer's shell, or CI running the e2e suite) otherwise
+  // takes precedence over the config file these tests write, and assertions
+  // on the workspace id fail for reasons that have nothing to do with the CLI.
+  const env: Record<string, string | undefined> = {
     ...process.env,
+    CONTENTSTUDIO_API_KEY: undefined,
+    CONTENTSTUDIO_WORKSPACE_ID: undefined,
+    CONTENTSTUDIO_BASE_URL: undefined,
     ...envOverride,
   };
+  for (const k of Object.keys(env)) if (env[k] === undefined) delete env[k];
   try {
     const stdout = execFileSync("node", [CLI, ...args], {
       env,
@@ -409,5 +417,139 @@ describe("--dry-run paths never hit the network", () => {
       is_note: true,
       mentioned_users: ["u1"],
     });
+  });
+});
+
+describe("inbox --dry-run paths never hit the network", () => {
+  function withCfg() {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({ api_key: "cs_INVALID", active_workspace_id: "ws-bogus" }),
+    );
+    return { CONTENTSTUDIO_CONFIG_PATH: cfgFile };
+  }
+
+  it("inbox:send --dry-run builds the multipart field set", () => {
+    const env = withCfg();
+    const r = run(
+      [
+        "--json",
+        "inbox:send",
+        "conv-1",
+        "--platform-type",
+        "facebook",
+        "--platform-id",
+        "acc-9",
+        "--message",
+        "hello there",
+        "--dry-run",
+      ],
+      env,
+    );
+    expect(r.code).toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.ok).toBe(true);
+    expect(d.data.dry_run).toBe(true);
+    expect(d.data.endpoint).toBe(
+      "POST /workspaces/ws-bogus/inbox/conversations/conv-1/messages",
+    );
+    expect(d.data.body.platform_type).toBe("facebook");
+    expect(d.data.body.message).toBe("hello there");
+  });
+
+  it("inbox:update --dry-run collects repeated --element into element_refs", () => {
+    const env = withCfg();
+    const r = run(
+      [
+        "--json",
+        "inbox:update",
+        "--element",
+        "ref-a",
+        "--element",
+        "ref-b",
+        "--status",
+        "done",
+        "--dry-run",
+      ],
+      env,
+    );
+    expect(r.code).toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.data.endpoint).toBe("PATCH /workspaces/ws-bogus/inbox/elements");
+    expect(d.data.body.element_refs).toEqual(["ref-a", "ref-b"]);
+    expect(d.data.body.status).toBe("done");
+  });
+
+  it("inbox:comment-delete --dry-run renders query params into the endpoint", () => {
+    const env = withCfg();
+    const r = run(
+      [
+        "--json",
+        "inbox:comment-delete",
+        "cmt-1",
+        "--platform-type",
+        "linkedin",
+        "--platform-id",
+        "acc-9",
+        "--dry-run",
+      ],
+      env,
+    );
+    expect(r.code).toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.data.endpoint).toContain("platform_type=linkedin");
+    expect(d.data.endpoint).toContain("platform_id=acc-9");
+  });
+
+  it("inbox:tag-attach --dry-run percent-encodes the element ref", () => {
+    const env = withCfg();
+    const r = run(
+      [
+        "--json",
+        "inbox:tag-attach",
+        "conv:a/b",
+        "--tag",
+        "t1",
+        "--platform-id",
+        "acc-9",
+        "--inbox-type",
+        "conversation",
+        "--dry-run",
+      ],
+      env,
+    );
+    expect(r.code).toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.data.endpoint).toBe(
+      "POST /workspaces/ws-bogus/inbox/elements/conv%3Aa%2Fb/tags",
+    );
+    expect(d.data.body.tags).toEqual(["t1"]);
+  });
+
+  it("inbox:send errors when neither --message nor --file is given", () => {
+    const env = withCfg();
+    const r = run(
+      [
+        "--json",
+        "inbox:send",
+        "conv-1",
+        "--platform-type",
+        "facebook",
+        "--platform-id",
+        "acc-9",
+        "--dry-run",
+      ],
+      env,
+    );
+    expect(r.code).not.toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.ok).toBe(false);
+    expect(d.error.type).toBe("ConfigError");
+  });
+
+  it("inbox:list rejects an invalid --type", () => {
+    const env = withCfg();
+    const r = run(["--json", "inbox:list", "--type", "bogus"], env);
+    expect(r.code).not.toBe(0);
   });
 });
