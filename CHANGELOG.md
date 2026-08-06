@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1 — documentation wording
+
+- Reworded the Social Inbox sections of SKILL.md and the README, the inbox
+  `--help` text, and the `ConflictError` hint for clarity and consistency.
+- No CLI behaviour changes.
+
 ## 1.1.0 — Social Inbox support, posts:update, and approval workflows
 
 ### Social Inbox
