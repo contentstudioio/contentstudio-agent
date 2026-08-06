@@ -380,33 +380,32 @@ The inbox unifies three kinds of item into **elements**: `conversation` (DMs),
 `post` (a post with comments), and `review`. `inbox:list` is the entry point —
 everything else takes an id it returned.
 
-### ⚠️ Which id to pass — verified against the live API
+### Which id to pass
 
-**Rule: use `element_details.element_id` everywhere.** It is the only id that
-works across every element-scoped command. Despite the parameter being *named*
-`element_refs`, the bulk-update and tag endpoints reject the `element_ref`
-value with a 404 `INBOX_UPSTREAM_ERROR` ("Inbox details not found").
+Inbox commands take their id from the `element_details` object on each
+`inbox:list` row. Use **`element_details.element_id`** — it is accepted by
+every element-scoped command.
 
-| Command | `element_details.element_id` | `element_ref` |
-|---------|:---:|:---:|
-| `inbox:update` (`--element`) | ✅ | ❌ 404 |
-| `inbox:tag-attach` / `inbox:tag-detach` | ✅ | ❌ 404 |
-| `inbox:mark-read` | ✅ | ✅ |
-| `inbox:contact` / `inbox:contact-update` | ✅ | ✅ |
-| `inbox:messages` / `send` / `notes` / `note-add` / `bookmarks` | ✅ (`t_…` form) | ❌ empty list |
-| `inbox:comments` / `inbox:comment-add` | use `element_details.post_id` | ❌ empty list |
+| Command | Id to pass |
+|---------|------------|
+| `inbox:update` (`--element`) | `element_details.element_id` |
+| `inbox:tag-attach` / `inbox:tag-detach` | `element_details.element_id` |
+| `inbox:mark-read` | `element_details.element_id` |
+| `inbox:contact` / `inbox:contact-update` | `element_details.element_id` |
+| `inbox:messages` / `send` / `notes` / `note-add` / `bookmarks` | `element_details.element_id` (`t_…` form) |
+| `inbox:comments` / `inbox:comment-add` | `element_details.post_id` |
 
 Values look like:
 
 - `element_details.element_id` — `t_10000000000000001` (conversation) or
   `100000000000000001_200000000000000002` (post)
 - `element_details.post_id` — `900000000000001_100000000000000001`
-- `element_ref` — `6a0000000000000000000001` (Mongo-style; **avoid**)
 
-**The two failure modes are silent in different ways.** Read endpoints return
-`{"ok": true, "data": []}` — a successful empty read. Write endpoints return a
-404 that *looks* like the item was deleted. Neither means the conversation is
-missing. If either happens, check the id before telling the user anything.
+The row's top-level `element_ref` is an internal reference, not a command
+argument — always take the id from `element_details`.
+
+If a command returns an empty list or reports the item as not found, confirm
+the id against this table before describing the result to the user.
 
 Also needed for most writes:
 
@@ -468,14 +467,12 @@ Also needed for most writes:
 the section above apply unchanged: if `pagination.has_more` is true, do not
 report the first page as the whole inbox.
 
-> **The inbox caps page size at 200.** This is the one place the general
-> "auto-paginate with `--per-page <total>`" advice does not apply — the
-> pagination footer may suggest a number above 200, and the API will reject it.
-> For inboxes larger than 200, loop `--page 1`, `--page 2`, … up to
-> `pagination.last_page` instead.
+> **Inbox page size is 200.** For inboxes larger than that, page through with
+> `--page 1`, `--page 2`, … up to `pagination.last_page` rather than raising
+> `--limit` past 200.
 
-**Inbox limits enforced by the API** (the CLI rejects these before sending, so
-a `ConfigError` here is not a server failure):
+**Inbox limits.** The CLI validates these locally, so they surface as a
+`ConfigError` before any request is sent:
 
 | Limit | Where |
 |-------|-------|
@@ -484,51 +481,49 @@ a `ConfigError` here is not a server failure):
 | Exactly **one** operation per call | `inbox:update` — `--status`, `--archived`, and `--assigned` are mutually exclusive; run separate commands |
 | Tag name ≤ 50 chars | `inbox:tag-create` |
 
-**Partial success on bulk updates.** `inbox:update` can return HTTP `207`: some
-elements updated, others not, with the failures listed in `missing_ids`. The
-CLI reports this as a warning rather than a success. If `missing_ids` is
-non-empty, tell the user which elements did **not** change — do not report the
-batch as fully applied.
+**Partial success on bulk updates.** `inbox:update` returns HTTP `207` when
+some elements were updated and others were not, listing the remainder in
+`missing_ids`. The CLI reports this as a warning. When `missing_ids` is
+non-empty, tell the user which elements did not change rather than reporting
+the batch as fully applied.
 
-**`inbox:contact-update` is wider than it looks.** A contact is a *person*, not
-a per-element attribute: updating it changes that contact on **every** element
-for that account in the workspace, not just the `element_ref` you passed. The
-response's `updated_count` says how many. Tell the user this before running it.
+**`inbox:contact-update` updates the whole contact.** A contact is a person,
+not a per-element attribute, so the change applies to every element for that
+contact on that account in the workspace. The response's `updated_count` says
+how many were updated. Mention this scope to the user before running it.
 
 **`inbox:contact` returns personal data.** Email and phone of an end customer.
 Return only the fields the user actually asked for; don't dump the whole record
 into a summary or paste it somewhere persistent without being asked.
 
-**`inbox:messages` mixes activity events into the thread.** Entries with
-`message: null` and an `action` block (`MARKED_AS_DONE`, `PENDING`, `ARCHIVED`,
-…) are audit records of what a teammate did, not messages from the customer.
-They count toward `total_messages` and toward pagination. **Do not count them
-as messages, quote them as customer text, or treat one as the latest reply** —
-filter on `action == null` when you mean "actual messages". The CLI renders
-them as `— marked as done —` rows in human mode.
+**`inbox:messages` includes activity events.** A thread contains both messages
+and a record of team activity. Activity entries have `message: null` and an
+`action` block (`MARKED_AS_DONE`, `PENDING`, `ARCHIVED`, …) naming the teammate
+who performed it, and they count toward `total_messages` and pagination. Filter
+on `action == null` when you mean customer messages — don't count activity
+entries as messages, quote them as customer text, or treat one as the latest
+reply. The CLI renders them as `— marked as done —` rows in human mode.
 
 **Replies are nested, not paginated.** In `inbox:comments`, replies live under
 each thread's `children` — they are not separate top-level rows. Paging counts
 threads (`total_threads`), not individual comments, so "12 comments" from the
 pagination block means 12 *threads* and there may be many more replies inside.
 
-**A `409` on a send is not a normal failure.** For `inbox:send` and
-`inbox:comment-add` the API says the outcome "cannot be determined" — the
-message may or may not have reached the customer. The CLI surfaces this as
-`ConflictError`. **Do not retry automatically.** Read the conversation back
-with `inbox:messages` to see whether it landed, and tell the user what you
-found before sending anything again.
+**Handling a `409` on a send.** For `inbox:send` and `inbox:comment-add`, a
+`409` means the delivery outcome is undetermined — the message may or may not
+have reached the customer. The CLI surfaces it as `ConflictError`. Do not retry
+automatically: read the conversation back with `inbox:messages` to check
+whether it landed, and tell the user what you found before sending again.
 
-**Confirming a send.** `inbox:send` returns `sent_message.id_status`. When it is
-`unavailable`, the platform accepted the message but returned no id, so there
-is nothing to reconcile against later — report it as sent-but-unconfirmed
-rather than fully confirmed.
+**Confirming a send.** `inbox:send` returns `sent_message.id_status`. When it
+is `unavailable`, the platform accepted the message without returning an id, so
+there is no id to reconcile against later — report it as sent, with delivery
+unconfirmed.
 
-**Inbox-specific errors.** A `502` from any `inbox:*` command means the
-upstream inbox service is unavailable, not that the item is missing. Retry
-after a short backoff rather than telling the user the conversation is gone.
-An empty `inbox:list` result is a successful empty read — say "no matching
-conversations", not "not found".
+**Inbox-specific responses.** A `502` from an `inbox:*` command indicates the
+inbox service is temporarily unreachable rather than a missing item — retry
+after a short backoff. An empty `inbox:list` result is a successful empty
+read: report it as "no matching conversations", not "not found".
 
 ---
 
@@ -835,7 +830,7 @@ contentstudio --json inbox:tag-attach <element_ref> \
 | `AuthError` | 401, 403 | Run `auth:login` with a valid key. |
 | `NotFoundError` | 404 | The resource doesn't exist or isn't in this workspace. |
 | `ValidationError` | 422 | Flattened Laravel-style field errors from the API. |
-| `ConflictError` | 409 | Duplicate resource, **or** a send whose outcome is undetermined. Do not blindly retry a send — verify first. |
+| `ConflictError` | 409 | Resource already exists, or a send's delivery outcome is undetermined. Verify before retrying a send. |
 | `RateLimitError` | 429 | Wait a moment and retry. |
 | `BackendError` | 5xx or network | Retry after a short backoff. |
 | `ConfigError` | — (local) | Missing API key / workspace; run `auth:login` or pass flags. |

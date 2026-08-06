@@ -129,8 +129,7 @@ describeIfCreds("API direct E2E", () => {
         const comments = await listComments(c, WORKSPACE_ID!, postId, {
           per_page: 20,
         });
-        // Paginated wrapper: the array lives on `.data`. Asserting on the
-        // wrapper itself silently passed because this block swallows throws.
+        // Paginated wrapper: the array lives on `.data`.
         expect(Array.isArray(comments.data)).toBe(true);
       } catch (e: any) {
         // eslint-disable-next-line no-console
@@ -310,9 +309,8 @@ describeIfCreds("Social Inbox E2E (read-only)", () => {
     });
     if (!res.data.length) return; // nothing to assert against in this workspace
 
-    // IMPORTANT: these endpoints take element_details.element_id, NOT
-    // element_ref. Passing element_ref returns an empty list, so this test
-    // also guards the documented id mapping.
+    // These endpoints take element_details.element_id; this also guards the
+    // id mapping documented in SKILL.md and the README.
     const convId = (res.data[0] as any).element_details.element_id;
 
     const msgs = await listInboxMessages(c, WORKSPACE_ID!, convId, { limit: 5 });

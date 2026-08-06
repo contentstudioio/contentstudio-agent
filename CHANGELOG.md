@@ -25,66 +25,51 @@ assign), `inbox:star` / `inbox:unstar`, `inbox:contact-update`.
 **Tags** — `inbox:tag-create`, `-update`, `-delete` (bulk), `-merge`, `-attach`,
 `-detach`.
 
-Verified end-to-end against the live API (a real workspace, 120 inbox items);
-the notes below record where the published spec and reality diverge.
-
-**Identifier gotcha — read this first.** Pass `element_details.element_id`, not
-the top-level `element_ref`. Despite the request field being *named*
-`element_refs`, `inbox:update` and the tag-attach/detach endpoints reject an
-`element_ref` with a 404 `INBOX_UPSTREAM_ERROR` ("Inbox details not found"),
-and `inbox:messages` / `inbox:comments` return an empty list for it rather than
-an error. `element_id` works everywhere. Both docs now lead with this.
+**Identifiers.** Inbox commands take their id from `element_details` on each
+`inbox:list` row: `element_details.element_id` for element-scoped commands,
+conversations, notes and bookmarks, and `element_details.post_id` for post
+comments. SKILL.md and the README both lead with this.
 
 Notes:
 
-- **The inbox service uses its own response envelope.** Unlike the rest of the
-  v1 API it does not return `{status, message, data}` — each endpoint returns
-  its collection under its own key (`elements`, `messages`, `comments`, `tags`,
-  `contact`, `element_counts`) with paginator fields whose names also differ
-  (`total_count`/`current_page`/`last_page`/`limit` for search,
-  `total_messages`/`page`/`page_count` for messages, `total_threads` for post
-  comments). The inbox wrappers normalise all of this, so `--json` output keeps
-  the same `{ok, data, pagination}` envelope as every other command.
-- Table columns use field names verified against live responses: a list row
-  carries `platform` (not `platform_type`), a conversation's latest text is in
-  `last_message.message` and a post's in `last_comment.message`, and the sender
-  is `from[0]` — an ARRAY whose `name` is often null with `first_name` /
-  `last_name` populated. `inbox:list` also shows an UNREAD column.
-- `inbox:notes` and `inbox:bookmarks` are paginated (`total`, `page`, `limit`);
-  the spec documents neither a schema nor pagination for them. Both now accept
-  `--page` / `--limit` and return a `pagination` block.
-- Inbox tag colors are hex (`#33aa55`). Some existing tags display `color_1`,
-  but the API rejects that format on write.
-- Post-comment paging is driven by `total_threads` (top-level threads), not
-  `total_comment_count` (which counts replies too and would overstate the page
-  count).
-- API limits are enforced client-side, so an invalid call fails immediately with
-  a `ConfigError` instead of a round-trip 422: `--limit` ≤ 200 on every inbox
-  list, ≤ 100 element refs per `inbox:update`, tag names ≤ 50 chars, and
-  **exactly one** operation per `inbox:update` (`--status`, `--archived` and
-  `--assigned` are mutually exclusive — the API returns 422 otherwise).
+- Inbox responses are normalised into the CLI's standard envelope, so `--json`
+  output keeps the same `{ok, data, pagination}` shape as every other command.
+  Each endpoint's collection (`elements`, `messages`, `comments`, `tags`,
+  `contact`, `element_counts`) and its paginator fields are mapped onto that
+  envelope by the inbox wrappers.
+- Human-mode tables map to the inbox response fields: `platform` on a list row,
+  `last_message.message` for a conversation and `last_comment.message` for a
+  post, and the sender from `from[0]` (falling back to `first_name` /
+  `last_name` when `name` is empty). `inbox:list` also shows an UNREAD column.
+- `inbox:notes` and `inbox:bookmarks` accept `--page` / `--limit` and return a
+  `pagination` block.
+- Inbox tag colors are hex values, e.g. `#33aa55`.
+- Post-comment paging counts top-level threads (`total_threads`) rather than
+  every comment, so page counts reflect threads.
+- API limits are validated client-side so an invalid call fails immediately
+  with a `ConfigError` rather than a round-trip: `--limit` ≤ 200 on every inbox
+  list, ≤ 100 elements per `inbox:update`, tag names ≤ 50 chars, and exactly
+  one operation per `inbox:update` (`--status`, `--archived` and `--assigned`
+  are mutually exclusive).
 - `inbox:update` understands HTTP `207` partial success: when the response
   carries `missing_ids`, the CLI warns and names the elements it could not
   update rather than reporting the whole batch as applied.
-- New `ConflictError` (HTTP 409, exit code 7). The inbox send endpoints answer
-  409 when an idempotency conflict means the outcome "cannot be determined" —
-  the message may already have reached the customer. The error carries an
-  explicit do-not-blindly-retry hint, and SKILL.md tells the agent to read the
-  conversation back before resending. 409 previously fell through to a bare
-  `ContentStudioError` with no hint at all.
-- `inbox:contact-update` now says what it really does: a contact is a person,
-  not a per-element attribute, so the update applies to EVERY element for that
-  contact on that account. The command reports the API's `updated_count`.
-- `inbox:send` and `inbox:comment-add` report what the API says happened rather
-  than what was requested — `sent_comment.resource_type` distinguishes a comment
-  from a private reply, and `sent_message.id_status: "unavailable"` is surfaced
-  as a warning that delivery cannot be confirmed by id.
+- New `ConflictError` (HTTP 409, exit code 7), used for duplicate resources and
+  for sends whose delivery outcome is undetermined. It carries a hint to verify
+  before retrying, and SKILL.md tells the agent to read the conversation back
+  rather than resending automatically.
+- `inbox:contact-update` documents its scope: a contact is a person, not a
+  per-element attribute, so the update applies to every element for that
+  contact on that account. The command reports `updated_count`.
+- `inbox:send` and `inbox:comment-add` report the outcome from the response:
+  `sent_comment.resource_type` distinguishes a comment from a private reply, and
+  `sent_message.id_status: "unavailable"` is surfaced as a note that delivery
+  could not be confirmed by id.
 - SKILL.md documents that `inbox:comments` nests replies under each thread's
   `children` and pages by threads, and that `inbox:contact` returns end-customer
-  PII (email, phone) that should not be echoed wholesale.
-- Note for agents: the inbox's 200-item page cap is the one case where the
-  general "auto-paginate with `--per-page <total>`" guidance breaks; SKILL.md
-  now says to loop `--page` instead.
+  contact details (email, phone) that should be handled with care.
+- Note for agents: inbox pages are capped at 200 items, so SKILL.md directs
+  paging through `--page` rather than raising `--limit` past that.
 - Every inbox write supports `--dry-run`, and the preview now percent-encodes
   path segments so it shows the URL that would actually be requested — element
   refs can contain `:` and `/`.
@@ -97,8 +82,8 @@ Notes:
   dedicated helpers rather than the generic `data` unwrapper. `emitDryRun` /
   `parseJsonOption` moved from `commands/crud.ts` into `cliCtx.ts` so both
   modules share one copy.
-- SKILL.md's trailing `## Version` section is gone — it had drifted to `1.0.0`
-  while the frontmatter said `1.0.10`. The frontmatter is now the single source.
+- Removed SKILL.md's trailing `## Version` section; the frontmatter `version:`
+  field is the single source of truth.
 
 ### posts:update, approval workflows, LinkedIn polls & collaborators
 

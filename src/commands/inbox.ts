@@ -59,9 +59,8 @@ import {
 const INBOX_TYPES = ["conversation", "post", "review"] as const;
 
 /**
- * Percent-encode a path segment. Mirrors what `api.ts` does on the wire, so a
- * `--dry-run` preview shows the URL that would actually be requested — element
- * refs in particular can carry `:` and `/`.
+ * Percent-encode a path segment, mirroring `api.ts`, so a `--dry-run` preview
+ * shows the URL that would actually be requested.
  */
 const enc = encodeURIComponent;
 
@@ -73,9 +72,8 @@ function strList(v: unknown): string[] | undefined {
 }
 
 /**
- * Resolve a display name from the inbox's `from` shape, verified against the
- * live API: `from` is an ARRAY, and its `name` is frequently null while
- * `first_name` / `last_name` are populated.
+ * Resolve a display name from the inbox's `from` shape: it is an array, and
+ * `name` may be empty where `first_name` / `last_name` are populated.
  */
 function personName(from: any): string | undefined {
   const p = Array.isArray(from) ? from[0] : from;
@@ -176,9 +174,8 @@ function registerElements<T>(yargs: Argv<T>): Argv<T> {
           data,
           g,
           (d) => {
-            // Field names verified against the live API — a conversation
-            // carries `last_message`, a post carries `last_comment`, and the
-            // sender lives in that object's `from[]` array.
+            // A conversation carries `last_message`, a post carries
+            // `last_comment`, and the sender is in that object's `from[]`.
             const rows = out.listish(d).map((e: any) => {
               const latest = e?.last_message ?? e?.last_comment;
               const unread =
@@ -279,7 +276,7 @@ function registerElements<T>(yargs: Argv<T>): Argv<T> {
           .option("element", {
             type: "string",
             array: true,
-            describe: `Element id (element_details.element_id — NOT element_ref, which 404s). Repeatable, max ${MAX_INBOX_BULK_REFS}.`,
+            describe: `Element id from element_details.element_id. Repeatable, max ${MAX_INBOX_BULK_REFS}.`,
           })
           .option("status", {
             type: "string",
@@ -452,7 +449,7 @@ function registerConversations<T>(yargs: Argv<T>): Argv<T> {
   return yargs
     .command(
       "inbox:messages <conversation_id>",
-      "List messages. Id = element_details.element_id (t_…), not element_ref.",
+      "List messages in a conversation. Id = element_details.element_id.",
       (y) =>
         y
           .positional("conversation_id", { type: "string", demandOption: true })
@@ -1326,7 +1323,7 @@ function registerTags<T>(yargs: Argv<T>): Argv<T> {
     )
     .command(
       "inbox:tag-attach <element_ref>",
-      "Attach tags to an element. Pass element_details.element_id (element_ref 404s).",
+      "Attach tags to an element. Id = element_details.element_id.",
       (y) =>
         y
           .positional("element_ref", { type: "string", demandOption: true })
@@ -1375,7 +1372,7 @@ function registerTags<T>(yargs: Argv<T>): Argv<T> {
     )
     .command(
       "inbox:tag-detach <element_ref> <tag_id>",
-      "Detach a tag. Pass element_details.element_id (element_ref 404s).",
+      "Detach a tag from an element. Id = element_details.element_id.",
       (y) =>
         y
           .positional("element_ref", { type: "string", demandOption: true })

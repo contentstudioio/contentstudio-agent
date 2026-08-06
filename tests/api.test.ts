@@ -150,7 +150,7 @@ describe("Error mapping", () => {
     );
   });
 
-  it("409 → ConflictError with a do-not-retry hint (send outcome undetermined)", async () => {
+  it("409 → ConflictError carrying a verify-before-retry hint", async () => {
     nock(BASE)
       .post(`${PATH}/workspaces/ws-1/inbox/conversations/c1/messages`)
       .reply(409, { message: "Idempotency conflict" });
@@ -160,7 +160,7 @@ describe("Error mapping", () => {
       message: "hi",
     }).catch((e) => e);
     expect(err).toBeInstanceOf(ConflictError);
-    expect(err.hint).toMatch(/not blindly retry/i);
+    expect(err.hint).toMatch(/before retrying/i);
   });
 
   it("429 retries up to retries then raises RateLimitError", async () => {
@@ -712,8 +712,8 @@ describe("Account write wrappers", () => {
 });
 
 describe("Inbox — elements, state, contacts", () => {
-  // The inbox service does not use the {status,message,data} envelope — it
-  // returns the collection under its own key with its own paginator names.
+  // Inbox endpoints return their collection under a named key with
+  // per-endpoint paginator fields; the wrappers map them onto {data, pagination}.
   it("searchInboxElements unwraps `elements` and normalises `total_count`", async () => {
     let received: any;
     nock(BASE)

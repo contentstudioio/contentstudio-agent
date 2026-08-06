@@ -65,13 +65,9 @@ export class BackendError extends ContentStudioError {
 }
 
 /**
- * HTTP 409. Two distinct meanings in this API:
- *  - a duplicate resource (`add/bluesky`, `add/facebook-group`), and
- *  - an idempotency conflict on an inbox send, where the API explicitly says
- *    the outcome "cannot be determined".
- *
- * The second case is why this is NOT retryable: the message may already have
- * reached the customer.
+ * HTTP 409 — a conflict with existing state. Used for duplicate resources
+ * (`add/bluesky`, `add/facebook-group`) and for inbox sends whose delivery
+ * outcome is undetermined, where the send may already have been delivered.
  */
 export class ConflictError extends ContentStudioError {
   readonly errorType = "ConflictError";
@@ -111,9 +107,9 @@ export function fromHttpStatus(
       httpStatus: status,
       payload,
       hint:
-        "Conflict — either the resource already exists, or a send's outcome " +
-        "could not be determined. Do NOT blindly retry a message/comment " +
-        "send: check whether it already went through first.",
+        "The resource already exists, or a send's delivery outcome is " +
+        "undetermined. Before retrying a message or comment send, check " +
+        "whether it already went through.",
     });
   }
   if (status >= 500) {

@@ -732,11 +732,10 @@ function seg(v: string): string {
 const inboxBase = (workspaceId: string) => `/workspaces/${workspaceId}/inbox`;
 
 /**
- * The inbox service does NOT use the `{status, message, data}` envelope the
- * rest of the v1 API uses. It returns the collection under its own key
- * (`elements`, `messages`, `comments`, `tags`, …) with paginator fields whose
- * names differ per endpoint. These helpers normalise both so inbox commands
- * emit the same `{ok, data, pagination}` envelope as every other command.
+ * Inbox endpoints return their collection under a named key (`elements`,
+ * `messages`, `comments`, `tags`, …) alongside per-endpoint paginator fields.
+ * These helpers map both onto the CLI's standard shape so inbox commands emit
+ * the same `{ok, data, pagination}` envelope as every other command.
  */
 function inboxCollection(body: any, ...keys: string[]): any[] {
   if (Array.isArray(body)) return body;
@@ -1020,8 +1019,7 @@ export async function listInboxBookmarks(
   params: { page?: number; limit?: number } = {},
 ): Promise<PaginatedResponse<any[]>> {
   assertLimit(params.limit);
-  // Verified against the live API: {status, bookmarks[], total,
-  // total_bookmarks, page, limit} — paginated, though the spec says neither.
+  // Response: {status, bookmarks[], total, total_bookmarks, page, limit}.
   const raw = await c.request<any>(
     "GET",
     `${inboxBase(workspaceId)}/conversations/${seg(conversationId)}/bookmarks`,
@@ -1073,9 +1071,7 @@ export async function listInboxNotes(
   params: { page?: number; limit?: number } = {},
 ): Promise<PaginatedResponse<any[]>> {
   assertLimit(params.limit);
-  // Verified against the live API: {status, notes[], total, total_notes,
-  // page, limit}. The published spec documents no schema here and does not
-  // mention that this endpoint paginates.
+  // Response: {status, notes[], total, total_notes, page, limit}.
   const raw = await c.request<any>(
     "GET",
     `${inboxBase(workspaceId)}/conversations/${seg(conversationId)}/notes`,

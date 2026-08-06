@@ -486,18 +486,16 @@ contentstudio --json comments:add <post_id> "test" --note --dry-run
 The inbox brings DMs, post comments, and reviews into one place. It models all
 three as **elements**, each identified by an `element_ref`:
 
-**Three ids, and they are not interchangeable.** `inbox:list` returns all of
-them; passing the wrong one gives you an empty list rather than an error:
-
-**Use `element_details.element_id`** — verified as the only id accepted by every
-element-scoped command. The top-level `element_ref` field looks like the obvious
-choice but is rejected with a 404 by `inbox:update` and the tag commands.
+**Ids come from `element_details`.** Use `element_details.element_id` — it is
+accepted by every element-scoped command:
 
 | Id from `inbox:list` | Used by |
 |----------------------|---------|
-| `element_details.element_id` | everything element-scoped, plus `messages` / `send` / `notes` / `bookmarks` |
+| `element_details.element_id` | every element-scoped command, plus `messages` / `send` / `notes` / `bookmarks` |
 | `element_details.post_id` | `comments`, `comment-add` |
-| `element_ref` | works only for `mark-read` and `contact*` — avoid |
+
+The row's top-level `element_ref` is an internal reference, not a command
+argument — take the id from `element_details`.
 
 | Inbox type | What it is |
 |------------|------------|
@@ -551,9 +549,9 @@ untouched refs instead of reporting a clean pass.
 # Messages, newest first
 contentstudio --json inbox:messages <conversation_id> --sort-order desc --limit 20
 
-# Note: a thread also contains activity events (someone marked it done,
-# archived it, etc.). Those have `message: null` and an `action` block —
-# filter them out with `action == null` if you only want real messages.
+# A thread also contains team activity entries (marked done, archived, ...).
+# Those have `message: null` and an `action` block — filter on
+# `action == null` when you want customer messages only.
 
 # Comments on a published post
 contentstudio --json inbox:comments <post_id>
