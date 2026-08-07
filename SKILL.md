@@ -219,7 +219,7 @@ All commands are invoked as `contentstudio <group>:<command>`.
 | `accounts:connect <platform> --reconnect --account-id <id>` | Refresh an expired/invalid account |
 | `accounts:add-bluesky --handle <h> --app-password <p>` | Connect a Bluesky account (no browser — uses app password) |
 | `accounts:add-facebook-group --name <n> [--image <url>]` | Manually add a Facebook Group connection |
-| `accounts:remove <account_id>` | Remove (disconnect) a social account. `account_id` is the account's `_id` from `accounts:list`. Requires the `save_social` permission (403 otherwise). |
+| `accounts:remove <account_id>` | Remove (disconnect) a social account. `account_id` is the account's `id` from `accounts:list`. Requires the `save_social` permission (403 otherwise). |
 
 `--platform` values for `accounts:list` filter: `facebook`, `linkedin`, `twitter`, `instagram`, `youtube`, `tiktok`, `pinterest`, `gmb`.
 
@@ -243,6 +243,8 @@ All commands are invoked as `contentstudio <group>:<command>`.
 | `posts:create -c "text" -i <twitter_account> -t draft --twitter '<json>'` | Create a Twitter/X threaded-tweet post (max 10 tweets) |
 | `posts:create -c "text" -i <account> -t draft --first-comment "..." --first-comment-account <id>` | Create a post with a first comment |
 | `posts:create -c "text" -i <linkedin_account> -t draft --post-type poll --linkedin-options '<json>'` | Create a LinkedIn poll post (text-only) |
+| `posts:create -c "text" -i <ig_account> -t draft --post-type reel --video-url <url> --instagram-trial-reel` | Create an Instagram trial reel (shown to non-followers first) |
+| `posts:create -c "common text" -i <fb_account> -i <tiktok_account> -t draft -m <img_url> --overrides '<json>'` | Same post to multiple platforms with a per-platform content override |
 | `posts:create --body /path/to/body.json` | Create a post with full JSON body |
 | `posts:update <post_id> [same flags as posts:create]` | Update an existing post (same body). Rejected (422) once the post is published/processing |
 | `posts:delete <post_id> [--delete-from-social]` | Delete a post |
@@ -266,10 +268,21 @@ All commands are invoked as `contentstudio <group>:<command>`.
   - Shape: `{ "title"?: <string>, "poll"?: { "question": <≤140>, "options": <string[2..4], each ≤30>, "duration": "ONE_DAY" | "THREE_DAYS" | "SEVEN_DAYS" | "FOURTEEN_DAYS" } }`
   - A **poll** must be paired with `--post-type poll` and text-only content (no images/video). Backend validates and 422s on violations.
 - `--facebook-collaborator <user_id>` (repeatable, **max 10**) → `facebook_options.collaborators` (Facebook accounts). Merges with `--facebook-carousel` / `--facebook-background-id`.
-- `--instagram-collaborator <user_id>` (repeatable, **max 3**) → `instagram_options.collaborators` (Instagram accounts).
+- `--instagram-collaborator <user_id>` (repeatable, **max 3**) → `instagram_options.collaborators` (Instagram accounts). Rejected (422) together with `--instagram-trial-reel`.
+- `--instagram-trial-reel` (boolean, default `false`) → `instagram_options.trial_reel.enabled`. Publishes an Instagram **trial reel** — shown to non-followers first, so it does not appear on the profile grid or in follower feeds.
+  - `--instagram-trial-reel-graduation SS_PERFORMANCE|MANUAL` (default `SS_PERFORMANCE`) → `instagram_options.trial_reel.graduation_strategy`. `SS_PERFORMANCE` lets Instagram auto-graduate it to followers if it performs well; `MANUAL` requires graduating it by hand in the Instagram app (Instagram has no API for that).
+  - Requires `--post-type reel` **exactly** (not `feed+reel`) and a video — feed/carousel/story are rejected. The CLI does not pre-validate this; the backend returns 422.
+  - **Rejected (422) together with `--instagram-collaborator`.** Share-to-story is silently dropped (not rejected) when combined with a trial reel.
+  - Not available when the workspace posts to Instagram via the mobile app (`instagram_posting_option=mobile`).
+- `--overrides '<json>'` → `overrides` (top-level, works across any platform in the post). Pass a JSON **object** keyed by platform (`facebook`, `instagram`, `twitter`, `linkedin`, `pinterest`, `youtube`, `tiktok`, `gmb`, `tumblr`, `threads`, `bluesky`, `telegram`); the CLI parses it locally (invalid JSON → `ConfigError`) and sends it verbatim.
+  - Shape per platform: `{ "content": { "text"?: <string>, "post_type"?: <string>, "media"?: { "images"?: <url[] ≤10>, "video"?: <url> } } }`.
+  - `text` and `post_type` each merge **independently** with the common top-level `content` — an override with only `media` still inherits the common `text`/`post_type`.
+  - `media` is **atomic**: if an override's `content` includes a `media` key at all, that platform's media is defined ENTIRELY by the override (no per-field fallback to the common media for whichever of `images`/`video` it omits). Omitting `media` entirely inherits the common `content.media` wholesale. This exists because some platforms (e.g. TikTok) can never support mixed images+video.
+  - Omitting `--overrides` entirely publishes the same top-level `content` to every targeted platform.
+  - Override images are URLs only (no `media_ids`) and follow the same validation as the top-level media (max 10 images, no mixing images+video in one override).
 - **Approval — two mutually-exclusive systems (pass only one):**
   - **Legacy** `--approver <user_id>` (repeatable) + `--approve-option anyone|everyone` (default `anyone`) + `--approval-notes "..."` → builds `approval: {approvers, approve_option, notes}` only when at least one approver is given. The post creator cannot be an approver. `anyone` = any single approver; `everyone` = all must approve.
-  - **Workflow** `--approval-workflow-id <id>` + `--approval-workflow-notes "..."` → `approval_workflow: {workflow_id, notes?}` — ATTACH a workflow (works on both create and update). Get the id from `approval-workflows:list` (its `_id`).
+  - **Workflow** `--approval-workflow-id <id>` + `--approval-workflow-notes "..."` → `approval_workflow: {workflow_id, notes?}` — ATTACH a workflow (works on both create and update). Get the id from `approval-workflows:list` (its `id`).
   - **Workflow (update only)** `--approval-workflow-action restart|resume|renotify_current|keep|remove` + `--approval-workflow-notes "..."` → `approval_workflow: {workflow_action, notes?}` — mutate the already-attached workflow. Only valid on `posts:update`.
   - **Exactly one** of `--approval-workflow-id` / `--approval-workflow-action`, and `--approver` cannot be combined with either `--approval-workflow-*` flag. The CLI errors locally (`ConfigError`) if these rules are broken.
 - `--facebook-background-id <id>` → `facebook_options.facebook_background_id` (plain-text Facebook posts only; rejected if media is attached). Get a valid id from `facebook:text-backgrounds`.
@@ -286,7 +299,7 @@ All commands are invoked as `contentstudio <group>:<command>`.
 - `--first-comment "<message>"` → `first_comment` (≤2000 chars). The CLI builds `first_comment: { message, accounts? }`. The accounts are supplied with `--first-comment-account <id>` (repeatable).
   - `--first-comment-account <id>` (repeatable) → `first_comment.accounts`. **The backend REQUIRES at least one account when a `--first-comment` message is given, and the accounts must be a subset of the post's main `--account` IDs.** The CLI does not hard-block client-side — if you omit `--first-comment-account`, the backend returns a 422.
 
-(`--facebook-carousel`, `--facebook-collaborator`, `--instagram-collaborator`, `--linkedin-options`, `--threads`, and `--twitter` only apply in shortcut mode. The `--body` JSON mode already supports `facebook_options` (carousel + collaborators), `instagram_options.collaborators`, `linkedin_options`, `threads_options`, `twitter_options`, `first_comment`, `approval`, and `approval_workflow` natively — use it for posts that mix multiple platform option blocks.)
+(`--facebook-carousel`, `--facebook-collaborator`, `--instagram-collaborator`, `--instagram-trial-reel`, `--instagram-trial-reel-graduation`, `--linkedin-options`, `--overrides`, `--threads`, and `--twitter` only apply in shortcut mode. The `--body` JSON mode already supports `facebook_options` (carousel + collaborators), `instagram_options` (`collaborators` + `trial_reel`), `linkedin_options`, `threads_options`, `twitter_options`, `first_comment`, `approval`, `approval_workflow`, and top-level `overrides` natively — use it for posts that mix multiple platform option blocks.)
 
 The `posts:list` payload now includes `linkedin_options` and `approval_workflow` per post (in addition to the existing fields) — they surface automatically in the `--json` output.
 
@@ -313,9 +326,9 @@ The `posts:list` payload now includes `linkedin_options` and `approval_workflow`
 | `categories:list` | List content categories |
 | `labels:list` | List labels |
 | `team:list` | List workspace team members |
-| `approval-workflows:list` | List approval workflows (use an item's `_id` as `--approval-workflow-id`) |
+| `approval-workflows:list` | List approval workflows (use an item's `id` as `--approval-workflow-id`) |
 
-Each `approval-workflows:list` item is `{ _id, name, is_default, levels: [{ level_number, title, rule, members: [{ user_id }] }] }`. Use `_id` as `posts:create` / `posts:update`'s `--approval-workflow-id`.
+Each `approval-workflows:list` item is `{ id, name, is_default, levels: [{ level_number, title, rule, members: [{ user_id }] }] }`. Use `id` as `posts:create` / `posts:update`'s `--approval-workflow-id`.
 
 ### Labels (write)
 
@@ -343,7 +356,7 @@ For labels and campaigns: `--name` ≤100 chars; `--color` is one of the enum va
 | `team:update <member_id> --role <r> --permissions '<json>' [--membership]` | Update a member's role/permissions |
 | `team:remove <member_id> [--confirmed]` | Remove a member |
 
-- `member_id` is the **membership id** — the `_id` / `member_id` field from `team:list` (not the user_id).
+- `member_id` is the **membership id** — the `member_id` field from `team:list` (not the user's `id`, a distinct field).
 - `--role` (required): `admin`, `approver`, or `collaborator`.
 - `--email` (required for `team:add`): a single email address.
 - `--membership` (optional): `team` (internal) or `client` (external; hidden from internal notes). Default `team`.
@@ -363,7 +376,7 @@ For labels and campaigns: `--name` ≤100 chars; `--color` is one of the enum va
 |---------|---------|
 | `accounts:remove <account_id> [--dry-run]` | Remove (disconnect) a social account (`DELETE /workspaces/{w}/accounts/{account_id}`) |
 
-- `account_id` is the account's `_id` from `accounts:list`.
+- `account_id` is the account's `id` from `accounts:list`.
 - Requires the `save_social` permission — callers without it get 403.
 - Errors: 401 (bad/missing API key), 403 (missing `save_social`), 404 (account not found in the workspace), 422 (removal failed). Success is 200 with an empty `data` array.
 - Mutating command — preview with `--dry-run` and confirm the workspace first.
@@ -533,7 +546,7 @@ read: report it as "no matching conversations", not "not found".
 
 ```bash
 contentstudio --json auth:whoami
-# → {"ok": true, "data": {"_id": "...", "email": "...", "full_name": "..."}}
+# → {"ok": true, "data": {"id": "...", "email": "...", "full_name": "..."}}
 ```
 
 ### Find a Facebook account to post to

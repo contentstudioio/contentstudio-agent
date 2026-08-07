@@ -433,7 +433,7 @@ export function updatePost(
 
 /**
  * GET /workspaces/{w}/approval-workflows — list the workspace's approval
- * workflows. Each item exposes `_id` (use as `approval_workflow.workflow_id`),
+ * workflows. Each item exposes `id` (use as `approval_workflow.workflow_id`),
  * `name`, `is_default`, and `levels[]`.
  */
 export function listApprovalWorkflows(
@@ -695,7 +695,7 @@ export function removeTeamMember(
 
 // ─────────────────────────────────────────────────────────────────
 // Social accounts — remove (disconnect) a connected account.
-// `accountId` is the account's `_id` from accounts:list.
+// `accountId` is the account's `id` from accounts:list.
 // ─────────────────────────────────────────────────────────────────
 
 /**

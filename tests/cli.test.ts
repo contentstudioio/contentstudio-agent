@@ -371,6 +371,213 @@ describe("--dry-run paths never hit the network", () => {
     expect(data.error.type).toBe("ConfigError");
   });
 
+  it("posts:create --dry-run with --instagram-trial-reel builds trial_reel block", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "Trial reel",
+        "-i",
+        "ig1",
+        "-t",
+        "draft",
+        "--video-url",
+        "https://e.com/reel.mp4",
+        "--post-type",
+        "reel",
+        "--instagram-trial-reel",
+        "--instagram-trial-reel-graduation",
+        "MANUAL",
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(true);
+    expect(data.data.body.instagram_options).toEqual({
+      trial_reel: { enabled: true, graduation_strategy: "MANUAL" },
+    });
+  });
+
+  it("posts:create --dry-run with --instagram-trial-reel defaults graduation_strategy to SS_PERFORMANCE", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "Trial reel",
+        "-i",
+        "ig1",
+        "-t",
+        "draft",
+        "--video-url",
+        "https://e.com/reel.mp4",
+        "--post-type",
+        "reel",
+        "--instagram-trial-reel",
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(true);
+    expect(data.data.body.instagram_options).toEqual({
+      trial_reel: { enabled: true, graduation_strategy: "SS_PERFORMANCE" },
+    });
+  });
+
+  it("posts:create --instagram-trial-reel with --instagram-collaborator emits ConfigError (mutually exclusive)", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "Trial reel",
+        "-i",
+        "ig1",
+        "-t",
+        "draft",
+        "--video-url",
+        "https://e.com/reel.mp4",
+        "--post-type",
+        "reel",
+        "--instagram-trial-reel",
+        "--instagram-collaborator",
+        "ig_user_1",
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).not.toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(false);
+    expect(data.error.type).toBe("ConfigError");
+  });
+
+  it("posts:create --instagram-trial-reel-graduation rejects an invalid enum value", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "",
+        "-i",
+        "ig1",
+        "-t",
+        "draft",
+        "--instagram-trial-reel-graduation",
+        "BOGUS",
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).not.toBe(0);
+  });
+
+  it("posts:create --dry-run with --overrides builds the top-level overrides object", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const overrides =
+      '{"tiktok":{"content":{"media":{"video":"https://e.com/clip.mp4"}}}}';
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "Common caption",
+        "-i",
+        "fb1",
+        "-i",
+        "tt1",
+        "-t",
+        "draft",
+        "-m",
+        "https://e.com/common.jpg",
+        "--overrides",
+        overrides,
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(true);
+    expect(data.data.body.overrides).toEqual({
+      tiktok: { content: { media: { video: "https://e.com/clip.mp4" } } },
+    });
+    // Common content is untouched — merge semantics are the backend's job.
+    expect(data.data.body.content.text).toBe("Common caption");
+    expect(data.data.body.content.media.images).toEqual([
+      "https://e.com/common.jpg",
+    ]);
+  });
+
+  it("posts:create --overrides invalid JSON emits ConfigError", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "x",
+        "-i",
+        "fb1",
+        "-t",
+        "draft",
+        "--overrides",
+        "{bad json",
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).not.toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(false);
+    expect(data.error.type).toBe("ConfigError");
+  });
+
   it("posts:delete --dry-run no network", () => {
     fs.writeFileSync(
       cfgFile,
