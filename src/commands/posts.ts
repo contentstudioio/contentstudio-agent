@@ -66,7 +66,7 @@ export function registerPosts<T>(yargs: Argv<T>): Argv<T> {
     )
     .command(
       "posts:create",
-      "Create a post. Either --body <file.json> or shortcut flags --content/--account/--publish-type (plus --facebook-carousel / --threads / --twitter / --linkedin-options / --overrides JSON blobs, and --instagram-trial-reel).",
+      "Create a post. Either --body <file.json> or shortcut flags --content/--account/--publish-type (plus --facebook-carousel / --threads / --twitter / --linkedin-options / --platform-overrides JSON blobs, and --instagram-trial-reel).",
       (y) => applyPostBodyOptions(y),
       run(async (argv: any, g) => {
         const { cfg, client } = buildClient(g);
@@ -332,10 +332,10 @@ function applyPostBodyOptions<T>(y: Argv<T>): Argv<T> {
       describe:
         "How the trial reel graduates to followers (default SS_PERFORMANCE): SS_PERFORMANCE auto-graduates it if it performs well; MANUAL requires graduating it by hand in the Instagram app (no API for that). Only meaningful with --instagram-trial-reel. → instagram_options.trial_reel.graduation_strategy.",
     })
-    .option("overrides", {
+    .option("platform-overrides", {
       type: "string",
       describe:
-        'Per-platform content overrides as a JSON object keyed by platform: facebook, instagram, twitter, linkedin, pinterest, youtube, tiktok, gmb, tumblr, threads, bluesky, telegram. Each value is {"content":{"text"?,"post_type"?,"media"?:{"images"?,"video"?}}}. `text` and `post_type` each merge independently with the common content — an override with only `media` still inherits the common text/post_type. `media` is atomic: including a `media` key at all (even partial) replaces that platform\'s media entirely, with NO fallback to the common media for the half it omits; omitting `media` inherits the common media wholesale. Omit --overrides entirely to publish the same content to every platform. → overrides',
+        'Per-platform content overrides as a JSON object keyed by platform: facebook, instagram, twitter, linkedin, pinterest, youtube, tiktok, gmb, tumblr, threads, bluesky, telegram. Each value is {"content":{"text"?,"post_type"?,"media"?:{"images"?,"video"?}}}. `text` and `post_type` each merge independently with the common content — an override with only `media` still inherits the common text/post_type. `media` is atomic: including a `media` key at all (even partial) replaces that platform\'s media entirely, with NO fallback to the common media for the half it omits; omitting `media` inherits the common media wholesale. Omit --platform-overrides entirely to publish the same content to every platform. → platform_overrides',
     })
     .option("threads", {
       type: "string",
@@ -409,12 +409,14 @@ function buildPostBodyFromArgv(argv: any): Record<string, unknown> {
     ? (parseJsonFlag(String(twitterRaw), "--twitter", "array") as unknown[])
     : undefined;
 
-  const overridesRaw = argv.overrides;
-  const overrides = overridesRaw
-    ? (parseJsonFlag(String(overridesRaw), "--overrides", "object") as Record<
-        string,
-        unknown
-      >)
+  const platformOverridesRaw =
+    argv["platform-overrides"] ?? argv.platformOverrides;
+  const platformOverrides = platformOverridesRaw
+    ? (parseJsonFlag(
+        String(platformOverridesRaw),
+        "--platform-overrides",
+        "object",
+      ) as Record<string, unknown>)
     : undefined;
 
   const instagramTrialReelEnabled = !!(
@@ -508,7 +510,7 @@ function buildPostBodyFromArgv(argv: any): Record<string, unknown> {
     instagramTrialReelGraduation: instagramTrialReelGraduation
       ? String(instagramTrialReelGraduation)
       : undefined,
-    overrides,
+    platformOverrides,
     multiThreads,
     threadedTweets,
     firstComment: firstComment ? String(firstComment) : undefined,
@@ -674,7 +676,7 @@ function buildSimplePostBody(opts: {
   instagramCollaborators?: string[];
   instagramTrialReelEnabled?: boolean;
   instagramTrialReelGraduation?: string;
-  overrides?: Record<string, unknown>;
+  platformOverrides?: Record<string, unknown>;
   multiThreads?: unknown[];
   threadedTweets?: unknown[];
   firstComment?: string;
@@ -770,8 +772,8 @@ function buildSimplePostBody(opts: {
   // Per-platform overrides — passed through as-is; merge semantics (text/
   // post_type merge independently, media is atomic) are enforced by the
   // backend, not the CLI.
-  if (opts.overrides) {
-    body.overrides = opts.overrides;
+  if (opts.platformOverrides) {
+    body.platform_overrides = opts.platformOverrides;
   }
 
   if (opts.multiThreads) {

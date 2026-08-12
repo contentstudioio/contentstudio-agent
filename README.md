@@ -331,7 +331,7 @@ contentstudio --json posts:create --dry-run \
 
 The top-level `-c / --content` is the lead tweet; each `--twitter` item is a follow-up tweet in the chain, in order (don't repeat the lead text in the items). The CLI parses the JSON array locally and sets `has_threaded_tweets: true`. Each item needs `message` or `media`. Unlike Threads, Twitter does **not** allow mixed media in one tweet (no images + video together) and allows **max 1 video per tweet** — the backend enforces this and returns a 422 if violated.
 
-### Per-platform content overrides (`--overrides`)
+### Per-platform content overrides (`--platform-overrides`)
 
 Publish the same post to several platforms but swap the caption, post type, or media for one of them:
 
@@ -341,12 +341,12 @@ contentstudio --json posts:create --dry-run \
   -i <facebook_id> -i <tiktok_id> \
   -t draft \
   -m https://example.com/common.jpg \
-  --overrides '{"tiktok":{"content":{"media":{"video":"https://example.com/clip.mp4"}}}}'
+  --platform-overrides '{"tiktok":{"content":{"media":{"video":"https://example.com/clip.mp4"}}}}'
 ```
 
 TikTok publishes with the *common* text (`"Common caption"`, inherited — the override didn't touch `text`) and its *own* video, with **no images at all** — because the override's `content` includes a `media` key, TikTok's media is defined entirely by the override (no per-field fallback to the common image). Facebook, which has no override entry, publishes the common text and image unchanged.
 
-Keyed platforms: `facebook`, `instagram`, `twitter`, `linkedin`, `pinterest`, `youtube`, `tiktok`, `gmb`, `tumblr`, `threads`, `bluesky`, `telegram`. Each value is `{"content":{"text"?,"post_type"?,"media"?:{"images"?,"video"?}}}`. `text` and `post_type` merge independently with the common `content` (an override can set one without the other); `media` is all-or-nothing per platform. Omit `--overrides` to publish the same `content` everywhere.
+Keyed platforms: `facebook`, `instagram`, `twitter`, `linkedin`, `pinterest`, `youtube`, `tiktok`, `gmb`, `tumblr`, `threads`, `bluesky`, `telegram`. Each value is `{"content":{"text"?,"post_type"?,"media"?:{"images"?,"video"?}}}`. `text` and `post_type` merge independently with the common `content` (an override can set one without the other); `media` is all-or-nothing per platform. Omit `--platform-overrides` to publish the same `content` everywhere.
 
 ### Post with a first comment
 

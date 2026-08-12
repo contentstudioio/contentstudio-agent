@@ -505,7 +505,7 @@ describe("--dry-run paths never hit the network", () => {
     expect(r.code).not.toBe(0);
   });
 
-  it("posts:create --dry-run with --overrides builds the top-level overrides object", () => {
+  it("posts:create --dry-run with --platform-overrides builds the top-level platform_overrides object", () => {
     fs.writeFileSync(
       cfgFile,
       JSON.stringify({
@@ -513,7 +513,7 @@ describe("--dry-run paths never hit the network", () => {
         active_workspace_id: "ws-bogus",
       }),
     );
-    const overrides =
+    const platformOverrides =
       '{"tiktok":{"content":{"media":{"video":"https://e.com/clip.mp4"}}}}';
     const r = run(
       [
@@ -530,15 +530,15 @@ describe("--dry-run paths never hit the network", () => {
         "draft",
         "-m",
         "https://e.com/common.jpg",
-        "--overrides",
-        overrides,
+        "--platform-overrides",
+        platformOverrides,
       ],
       { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
     );
     expect(r.code).toBe(0);
     const data = JSON.parse(r.stdout);
     expect(data.ok).toBe(true);
-    expect(data.data.body.overrides).toEqual({
+    expect(data.data.body.platform_overrides).toEqual({
       tiktok: { content: { media: { video: "https://e.com/clip.mp4" } } },
     });
     // Common content is untouched — merge semantics are the backend's job.
@@ -548,7 +548,7 @@ describe("--dry-run paths never hit the network", () => {
     ]);
   });
 
-  it("posts:create --overrides invalid JSON emits ConfigError", () => {
+  it("posts:create --platform-overrides invalid JSON emits ConfigError", () => {
     fs.writeFileSync(
       cfgFile,
       JSON.stringify({
@@ -567,7 +567,7 @@ describe("--dry-run paths never hit the network", () => {
         "fb1",
         "-t",
         "draft",
-        "--overrides",
+        "--platform-overrides",
         "{bad json",
       ],
       { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
