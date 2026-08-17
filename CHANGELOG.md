@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — Analytics support
+
+99 new commands under the `analytics:` namespace, one per ContentStudio
+public API v1 analytics endpoint, across Facebook, Instagram, YouTube,
+Pinterest, LinkedIn, Google Business Profile, TikTok, and Twitter/X.
+
+- Date-range reports (`--platform-id`, `--start-date`, `--end-date`, plus
+  per-command optional filters like `--order-by`, `--media-type`,
+  `--hashtags`, `--limit`/`--offset`).
+- Single-item lookups (`*-single-post`, `*-single-pin`, `*-single-tweet`,
+  `*-single-video`) taking `--platform-id` + `--post-id`.
+- AI insights commands (`*-ai-insights`) taking `--type` and `--language`.
+- All read-only GETs — no `--dry-run` (mutating commands only).
+- SKILL.md documents the full command reference and the
+  `ANALYTICS_UPSTREAM_ERROR` response shape.
+
 ## 1.1.1 — documentation wording
 
 - Reworded the Social Inbox sections of SKILL.md and the README, the inbox
