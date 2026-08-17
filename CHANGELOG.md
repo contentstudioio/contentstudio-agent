@@ -1,5 +1,61 @@
 # Changelog
 
+## 1.2.0 — Best time to post
+
+### `scheduling:best-times`
+
+The scheduling optimiser is now part of the ContentStudio public API, so the CLI
+and the agent skill cover it. One new command wrapping
+`POST /workspaces/{w}/scheduling/optimal-times`.
+
+`scheduling:best-times` analyses the historical performance of the workspace's
+connected accounts and returns ranked posting **slots** — a weekday and an hour,
+best-first — both pooled across accounts (`global`) and per account
+(`individual`).
+
+Flags:
+
+- `--account <platform>:<account_id>` (repeatable) — restrict the analysis.
+  Both halves come from a single `accounts:list` row (its `platform` and `_id`),
+  because the API needs the platform as the entity `type`. Omit the flag to
+  analyse every connected account.
+- `--entities '<json>'` — the full entity array, for a different slot count per
+  account: `[{"id":"<id>","type":"facebook","slots":3}]`. Mutually exclusive
+  with `--account`.
+- `--global-slots <n>` / `--per-account-slots <n>` — how many recommendations
+  come back (1–24; API defaults 5 and 3).
+
+Notes:
+
+- **Times are always in the workspace timezone**, echoed as `meta.timezone`;
+  the endpoint takes no timezone parameter. That is the same clock
+  `posts:create --scheduled-at` writes against, so a slot can be scheduled
+  as-is — converting it to UTC first would move the post.
+- The response is not the usual `{status, message, data}` envelope, so the API
+  wrapper normalises `{meta, global, individual}` into the CLI's standard
+  `{ok, data}` shape like every other command.
+- A workspace with too little history still returns HTTP 200: the accounts that
+  could not be analysed come back in `meta.missing_entities` and `global` may be
+  `null`. That is a successful read, not an error. Accounts in
+  `meta.ai_fallback_entities` are estimates rather than measurements, and the
+  human-mode output labels them as such.
+- Slot counts and the `<platform>:<account_id>` form are validated client-side,
+  so a bad call fails immediately with a `ConfigError` rather than a round-trip.
+- Read-only, so there is no `--dry-run` — matching `inbox:list`, the CLI's other
+  POST-with-a-body read.
+- Human mode renders the pooled and per-account recommendations as tables
+  (rank, day, date, time, score, platform breakdown), with the hour formatted as
+  a clock time (the API returns it as a bare string, e.g. `"14"`).
+
+### Corrected `--scheduled-at` timezone documentation
+
+`posts:create` / `posts:update` `-s / --scheduled-at` was documented as UTC. The
+API actually interprets the timestamp as **workspace-local wall-clock time**, so
+the help text, SKILL.md and the README now say so. No behaviour change — the CLI
+sends the same string it always did; only the documentation was wrong, and it
+would have caused posts scheduled from `scheduling:best-times` slots to land at
+the wrong hour.
+
 ## 1.1.1 — documentation wording
 
 - Reworded the Social Inbox sections of SKILL.md and the README, the inbox

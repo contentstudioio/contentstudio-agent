@@ -1,7 +1,7 @@
 ---
 name: contentstudio
-description: ContentStudio is a tool to schedule social-media posts and manage the social inbox across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile. Use when the user wants to list/create/delete/approve posts, read and reply to DMs, comments and reviews, manage media, or audit workspaces, accounts, campaigns, labels, categories, or team-members on their ContentStudio account.
-version: 1.1.1
+description: ContentStudio is a tool to schedule social-media posts and manage the social inbox across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile. Use when the user wants to list/create/delete/approve posts, find the best time to post, read and reply to DMs, comments and reviews, manage media, or audit workspaces, accounts, campaigns, labels, categories, or team-members on their ContentStudio account.
+version: 1.2.0
 homepage: https://api.contentstudio.io/guide
 metadata: {"openclaw":{"emoji":"📅","requires":{"bins":["contentstudio"],"env":["CONTENTSTUDIO_API_KEY"]}}}
 ---
@@ -257,7 +257,7 @@ All commands are invoked as `contentstudio <group>:<command>`.
 - `-c / --content` (required) — post text.
 - `-i / --account <id>` (repeatable) — account ID(s) to post to. **Required UNLESS `--content-category-id` is given.**
 - `--content-category-id <id>` — sets top-level `content_category_id`. **Required by the backend when `--publish-type content_category`.** When set, accounts are derived from the category, so `--account` is not required (and may be omitted). Use this instead of `--account` for content-category posts.
-- `-s / --scheduled-at "YYYY-MM-DD HH:MM:SS"` — scheduling time (UTC). The CLI normalizes any parseable date to `YYYY-MM-DD HH:MM:SS` (the backend's required `date_format`).
+- `-s / --scheduled-at "YYYY-MM-DD HH:MM:SS"` — scheduling time. The CLI normalizes any parseable date to `YYYY-MM-DD HH:MM:SS` (the backend's required `date_format`) and sends it as a plain wall-clock string. **The API reads it in the workspace's timezone, not UTC** — so pass the local time the user wants the post to fire at, and get the zone from `workspaces:current` if you're unsure. `scheduling:best-times` already returns slots in that zone, so they can be passed straight through.
 - `-m / --image-url <url>` (repeatable), `--video-url <url>`, `--media-id <id>` (repeatable) — media.
 - `--post-type <type>` — e.g. `feed`, `reel`, `carousel`, `story`, `poll`. A **carousel** is auto-derived by the backend when `post_type=carousel` and 2+ images are attached. A **poll** requires `--post-type poll` **and** a text-only `--linkedin-options` poll block (no media).
 - `--label <id>` (repeatable, max 20) → `labels`.
@@ -289,6 +289,34 @@ All commands are invoked as `contentstudio <group>:<command>`.
 (`--facebook-carousel`, `--facebook-collaborator`, `--instagram-collaborator`, `--linkedin-options`, `--threads`, and `--twitter` only apply in shortcut mode. The `--body` JSON mode already supports `facebook_options` (carousel + collaborators), `instagram_options.collaborators`, `linkedin_options`, `threads_options`, `twitter_options`, `first_comment`, `approval`, and `approval_workflow` natively — use it for posts that mix multiple platform option blocks.)
 
 The `posts:list` payload now includes `linkedin_options` and `approval_workflow` per post (in addition to the existing fields) — they surface automatically in the `--json` output.
+
+### Scheduling — best time to post
+
+| Command | Purpose |
+|---------|---------|
+| `scheduling:best-times` | Ranked posting slots for the workspace, derived from the connected accounts' history |
+| `scheduling:best-times --account <platform>:<account_id>` | Restrict the analysis to specific accounts (repeatable) |
+| `scheduling:best-times --global-slots <n> --per-account-slots <n>` | How many recommendations to return (1–24 each) |
+| `scheduling:best-times --entities '<json>'` | Full entity array, for per-account slot counts |
+
+A **slot** is one recommended posting time: a weekday and an hour. Slots come back ranked best-first, so `--global-slots 3` means *the three best hours to post*.
+
+- **Times are always in the workspace timezone**, echoed as `meta.timezone`. There is no timezone parameter. That is the same clock `posts:create --scheduled-at` writes against, so a slot can be scheduled as-is — do **not** convert it to UTC first.
+- **Omit `--account` to analyse every connected account.** Otherwise pass `<platform>:<account_id>` where both halves come from one `accounts:list` row (its `platform` and `_id`), e.g. `--account facebook:<account_id>`. Supported platforms: `facebook`, `instagram`, `linkedin`, `twitter`, `tiktok`, `youtube`, `pinterest`, `threads`, `gmb`, `tumblr`, `bluesky`, `telegram`.
+- `--entities '[{"id":"<account_id>","type":"facebook","slots":3}]'` is the escape hatch for a **different slot count per account**; it cannot be combined with `--account`.
+- `--global-slots` (API default 5) sizes the pooled `global` view; `--per-account-slots` (API default 3) sizes each account's list. Both are 1–24 and are validated by the CLI before the call. Neither changes the underlying analysis or the `heatmap_matrix`, which always carries every hour that had signal.
+
+**Response shape** (`data` in the JSON envelope):
+
+- `meta` — `{generated_at, timezone, warnings[], missing_entities[], ai_fallback_entities[]}`.
+- `global` — pooled across analysed accounts: `top_recommendations[]` (each `{rank, day, date, time, score, platform_breakdown}`, where `time` is the hour as a bare string, e.g. `"14"` = 14:00), plus `heatmap_matrix.data` (sparse `[hour, day_index, score]` triples, `day_index` 0 = Monday) and `dates_key`. **`null` when no account had usable data.**
+- `individual` — the same breakdown keyed by account id, each with `platform` and `source` (`data_driven` or an AI fallback).
+
+**A thin workspace still returns HTTP 200.** Accounts with too little history come back in `meta.missing_entities` and `global` may be `null` — that is a successful read, not an error. Tell the user which accounts were skipped rather than reporting a failure. Accounts listed in `meta.ai_fallback_entities` are estimates, not measurements — say so when you present them.
+
+Errors: 422 for unknown accounts or a workspace with no connected accounts; 502 (`BackendError`) when the optimizer is temporarily unavailable — retry rather than reporting no data.
+
+**Reading is safe.** `scheduling:best-times` only reads, so it needs no `--dry-run` and no workspace confirmation. Scheduling a post from a slot is a mutation, so the usual `--dry-run` + workspace-confirmation rules apply to that step.
 
 ### Comments / Internal notes
 
@@ -739,6 +767,38 @@ contentstudio --json posts:create --body /tmp/post.json
 ```
 
 For a Threads or Twitter/X thread, use a body with that account and the matching block instead — e.g. `{ "content": {...}, "accounts": ["<threads_account_id>"], "scheduling": {...}, "threads_options": { "has_multi_threads": true, "multi_threads": [...] } }` (or `twitter_options.threaded_tweets` for Twitter/X).
+
+### Schedule a post at the best time
+
+```bash
+# 1. Ask for the best slots. Omit --account for every connected account.
+contentstudio --json scheduling:best-times --global-slots 3
+# → data.meta.timezone            e.g. "Asia/Karachi"
+#   data.global.top_recommendations[0]  {rank: 1, day: "Wednesday",
+#                                        date: "2026-08-19", time: "14", score: 100}
+#   data.meta.missing_entities     accounts with too little history (skipped)
+
+# 2. Narrow it to the account you're actually posting to.
+#    <platform>:<account_id> — both from one accounts:list row.
+contentstudio --json scheduling:best-times \
+  --account facebook:<account_id> --per-account-slots 3
+
+# 3. Show the user the ranked slots and let them pick. Then schedule at that
+#    slot's date + hour AS-IS — the times are already workspace-local, so
+#    converting to UTC would move the post.
+contentstudio --json posts:create \
+  -c "Launch day is here." \
+  -i <account_id> \
+  -t scheduled \
+  -s "2026-08-19 14:00:00" \
+  --dry-run
+
+# 4. Drop --dry-run once the user approves the time and the text.
+```
+
+If `data.global` is `null`, the workspace has too little history — don't report an
+error. Say which accounts were skipped (`meta.missing_entities`) and offer to
+schedule at a time the user chooses instead.
 
 ### List recent draft posts
 

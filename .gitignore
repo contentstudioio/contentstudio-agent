@@ -8,3 +8,9 @@ coverage/
 .nyc_output/
 .vscode/
 .idea/
+
+# Local agent/tooling artifacts — never part of a release.
+.claude/settings.local.json
+.claude/skills/
+.agents/
+skills-lock.json

@@ -402,6 +402,74 @@ contentstudio --json posts:create --dry-run \
 # → {"ok": true, "data": {"dry_run": true, "endpoint": "...", "body": {...}}}
 ```
 
+## Best Time to Post
+
+`scheduling:best-times` analyses the historical performance of the workspace's connected accounts and returns ranked posting **slots** — a weekday and an hour, best-first.
+
+```bash
+# Best times across every connected account
+contentstudio --json scheduling:best-times
+
+# Just this Facebook page, 3 recommendations for it
+contentstudio --json scheduling:best-times \
+  --account facebook:<account_id> --per-account-slots 3
+
+# Several accounts, and a bigger pooled list
+contentstudio --json scheduling:best-times \
+  --account facebook:<account_id> \
+  --account instagram:<account_id> \
+  --global-slots 10
+
+# Per-account slot counts need the full entity array
+contentstudio --json scheduling:best-times \
+  --entities '[{"id":"<account_id>","type":"facebook","slots":5},
+               {"id":"<account_id>","type":"linkedin","slots":2}]'
+```
+
+`--account` takes `<platform>:<account_id>` — both halves come from a single `accounts:list` row (its `platform` and `_id`). Omit it to analyse everything connected. Supported platforms: `facebook`, `instagram`, `linkedin`, `twitter`, `tiktok`, `youtube`, `pinterest`, `threads`, `gmb`, `tumblr`, `bluesky`, `telegram`.
+
+`--global-slots` (API default 5) and `--per-account-slots` (API default 3) are 1–24 and only control how much of the ranking comes back — they never change the analysis, and they don't affect `heatmap_matrix`, which always carries every hour that had signal.
+
+The `--json` payload:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "meta": {
+      "generated_at": "2026-08-17T09:00:00Z",
+      "timezone": "Asia/Karachi",
+      "warnings": [],
+      "missing_entities": [],
+      "ai_fallback_entities": []
+    },
+    "global": {
+      "top_recommendations": [
+        { "rank": 1, "day": "Wednesday", "date": "2026-08-19", "time": "14",
+          "score": 100, "platform_breakdown": { "facebook": 60, "instagram": 40 } }
+      ],
+      "heatmap_matrix": { "data": [[14, 2, 100]] },
+      "dates_key": ["2026-08-19"]
+    },
+    "individual": {
+      "<account_id>": { "platform": "facebook", "source": "data_driven",
+                        "top_recommendations": [] }
+    }
+  }
+}
+```
+
+**Times are always in the workspace timezone** (echoed as `meta.timezone`); there is no timezone parameter. That is the same clock `posts:create --scheduled-at` writes against, so a slot goes in as-is — converting it to UTC first would move the post:
+
+```bash
+# rank 1 above → Wednesday 2026-08-19 at 14:00 workspace-local
+contentstudio --json posts:create \
+  -c "Launch day is here." -i <account_id> -t scheduled \
+  -s "2026-08-19 14:00:00" --dry-run
+```
+
+A workspace with too little history still returns HTTP 200: the accounts that could not be analysed are listed in `meta.missing_entities` and `global` may be `null`. Accounts in `meta.ai_fallback_entities` are estimates rather than measurements. Errors are 422 (unknown accounts, or no connected accounts) and 502 (`BackendError`) when the optimizer is temporarily unavailable.
+
 ## Managing Posts
 
 ### List posts (with filters)
@@ -1034,7 +1102,7 @@ contentstudio --json posts:list --status pending_approval --per-page 50 \
 
 ## API Endpoints
 
-The CLI wraps these 20 endpoints from the ContentStudio v1 public API. Base URL: `https://api.contentstudio.io/api/v1`.
+The CLI wraps these endpoints from the ContentStudio v1 public API (plus the workspace/label/campaign/team writes and the `inbox:*` surface documented above). Base URL: `https://api.contentstudio.io/api/v1`.
 
 | Method | Endpoint | CLI command |
 |--------|----------|-------------|
@@ -1057,6 +1125,7 @@ The CLI wraps these 20 endpoints from the ContentStudio v1 public API. Base URL:
 | POST   | `/workspaces/{w}/posts` | `posts:create` |
 | DELETE | `/workspaces/{w}/posts/{p}` | `posts:delete` |
 | POST   | `/workspaces/{w}/posts/{p}/approval` | `posts:approve`, `posts:reject` |
+| POST   | `/workspaces/{w}/scheduling/optimal-times` | `scheduling:best-times` |
 | GET    | `/workspaces/{w}/posts/{p}/comments` | `comments:list` |
 | POST   | `/workspaces/{w}/posts/{p}/comments` | `comments:add` |
 
@@ -1140,6 +1209,11 @@ contentstudio --json posts:create [...] --dry-run                               
 contentstudio --json posts:delete <post_id> [--delete-from-social]                 # Delete
 contentstudio --json posts:approve <post_id> [--comment "..."]                     # Approve
 contentstudio --json posts:reject  <post_id> [--comment "..."]                     # Reject
+
+# Best time to post
+contentstudio --json scheduling:best-times                                          # All connected accounts
+contentstudio --json scheduling:best-times --account facebook:<account_id>         # One account
+contentstudio --json scheduling:best-times --global-slots 10                       # More recommendations
 
 # Comments / Notes
 contentstudio --json comments:list <post_id>                                        # List

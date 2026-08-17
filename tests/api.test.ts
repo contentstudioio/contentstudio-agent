@@ -46,6 +46,7 @@ import {
   postApproval,
   removeAccount,
   removeTeamMember,
+  schedulingOptimalTimes,
   updateCampaign,
   updateLabel,
   updatePost,
@@ -1148,5 +1149,113 @@ describe("Inbox — tags", () => {
       inbox_type: "conversation",
     });
     expect(qs).toMatchObject({ platform_id: "acc-9", inbox_type: "conversation" });
+  });
+});
+
+describe("Scheduling — optimal posting times", () => {
+  const URL = `${PATH}/workspaces/ws-1/scheduling/optimal-times`;
+
+  const okBody = {
+    status: true,
+    meta: {
+      generated_at: "2026-08-17T09:00:00Z",
+      timezone: "America/New_York",
+      warnings: [],
+      missing_entities: [],
+      ai_fallback_entities: [],
+    },
+    global: {
+      top_recommendations: [
+        {
+          rank: 1,
+          day: "Wednesday",
+          date: "2026-08-19",
+          time: "14",
+          score: 100,
+          platform_breakdown: { facebook: 60, instagram: 40 },
+        },
+      ],
+      heatmap_matrix: { data: [[14, 2, 100]] },
+      dates_key: ["2026-08-19"],
+    },
+    individual: {
+      "acc-1": { platform: "facebook", source: "data_driven", top_recommendations: [] },
+    },
+  };
+
+  it("POSTs an empty body when no entities are given and normalises the response", async () => {
+    let received: any;
+    nock(BASE)
+      .post(URL, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, okBody);
+
+    const res = await schedulingOptimalTimes(mkClient(), "ws-1");
+    expect(received).toEqual({});
+    // The endpoint does not use the {status, message, data} envelope, so the
+    // wrapper must surface meta/global/individual rather than a `data` key.
+    expect(res.meta.timezone).toBe("America/New_York");
+    expect(res.global.top_recommendations[0].rank).toBe(1);
+    expect(res.individual["acc-1"].platform).toBe("facebook");
+  });
+
+  it("passes entities and slot counts through verbatim", async () => {
+    let received: any;
+    nock(BASE)
+      .post(URL, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, okBody);
+
+    await schedulingOptimalTimes(mkClient(), "ws-1", {
+      entities: [{ id: "acc-1", type: "facebook", slots: 3 }],
+      global_slots: 5,
+      per_account_slots: 2,
+    });
+    expect(received).toEqual({
+      entities: [{ id: "acc-1", type: "facebook", slots: 3 }],
+      global_slots: 5,
+      per_account_slots: 2,
+    });
+  });
+
+  it("defaults `global` to null and `individual` to {} when absent", async () => {
+    nock(BASE).post(URL).reply(200, { status: true, meta: { timezone: "UTC" } });
+    const res = await schedulingOptimalTimes(mkClient(), "ws-1");
+    expect(res.global).toBeNull();
+    expect(res.individual).toEqual({});
+  });
+
+  it("rejects out-of-range slot counts client-side, before any request", async () => {
+    // No nock interceptor: if a request were made, disableNetConnect would
+    // surface a different error than ConfigError.
+    await expect(
+      schedulingOptimalTimes(mkClient(), "ws-1", { global_slots: 25 }),
+    ).rejects.toBeInstanceOf(ConfigError);
+    await expect(
+      schedulingOptimalTimes(mkClient(), "ws-1", { per_account_slots: 0 }),
+    ).rejects.toBeInstanceOf(ConfigError);
+    await expect(
+      schedulingOptimalTimes(mkClient(), "ws-1", {
+        entities: [{ id: "acc-1", type: "facebook", slots: 99 }],
+      }),
+    ).rejects.toBeInstanceOf(ConfigError);
+  });
+
+  it("maps a 422 (unknown entities / no connected accounts) to ValidationError", async () => {
+    nock(BASE).post(URL).reply(422, { message: "No connected accounts" });
+    await expect(
+      schedulingOptimalTimes(mkClient(), "ws-1"),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("maps a 502 (optimizer unavailable) to BackendError", async () => {
+    nock(BASE).post(URL).reply(502, { message: "Post time optimizer unavailable" });
+    await expect(
+      schedulingOptimalTimes(mkClient(), "ws-1"),
+    ).rejects.toBeInstanceOf(BackendError);
   });
 });
