@@ -117,3 +117,14 @@ export function fromHttpStatus(
   }
   return new ContentStudioError(message, { httpStatus: status, payload });
 }
+
+/**
+ * HTTP 403 with `error_code: IMAGE_CREDIT_LIMIT_EXCEEDED` — the workspace is out
+ * of AI image credits. Distinct from AuthError (which 403 otherwise maps to)
+ * because "top up credits" and "fix your API key" are different actions, and an
+ * agent that re-runs `auth:login` on this will loop forever.
+ */
+export class CreditLimitError extends ContentStudioError {
+  readonly errorType = "CreditLimitError";
+  readonly exitCode = 8;
+}

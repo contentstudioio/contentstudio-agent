@@ -8,9 +8,9 @@
 npx skills add contentstudioio/contentstudio-agent
 ```
 
-ContentStudio CLI — schedule social-media posts, manage media, accounts, comments, and approvals across **Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, and Google Business Profile** through the [ContentStudio](https://contentstudio.io) public API.
+ContentStudio CLI — schedule social-media posts, generate AI images, manage media, accounts, comments, and approvals across **Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, and Google Business Profile** through the [ContentStudio](https://contentstudio.io) public API.
 
-The `contentstudio` CLI provides a command-line interface for developers and AI agents to drive a ContentStudio workspace from the terminal — scheduling posts, uploading media, managing approvals, and auditing accounts/campaigns/labels — using the same API your dashboard does.
+The `contentstudio` CLI provides a command-line interface for developers and AI agents to drive a ContentStudio workspace from the terminal — scheduling posts, generating and editing images with AI, uploading media, managing approvals, and auditing accounts/campaigns/labels — using the same API your dashboard does.
 
 ## Why use this CLI
 
@@ -785,6 +785,152 @@ contentstudio --json media:upload --url https://example.com/img.jpg --dry-run
 
 The response includes an `_id` you can pass as `--media-id` when creating posts.
 
+## AI Images
+
+Generate images from a prompt, or run one of the dedicated image tools, and get back a `media_id` that `posts:create` accepts unchanged. Everything lands in the workspace media library.
+
+### Discover what is available
+
+```bash
+contentstudio --json images:tools     # invocable tools, their required inputs and controls
+contentstudio --json images:models    # model identifiers images:generate accepts
+contentstudio --json images:brand     # {configured, enabled} — will --use-brand do anything?
+```
+
+These three describe configuration rather than workspace state, so they are worth caching.
+
+### Generate
+
+```bash
+# Preview the request first — generating costs an image credit
+contentstudio --json images:generate -p "Flat-lay of autumn coffee beans on linen" --dry-run
+
+# Generate
+contentstudio --json images:generate \
+  -p "Flat-lay of autumn coffee beans on linen, warm daylight" \
+  --dimensions square_hd
+
+# Pick a model, and let the service refine the prompt (its default) or not
+contentstudio --json images:generate -p "..." --model nano-banana-pro --no-enhance-prompt
+
+# Apply the workspace's brand knowledge (resolved server-side; no brand ID exists)
+contentstudio --json images:generate -p "..." --use-brand
+
+# Edit an existing image — the prompt describes the change, not the whole picture
+contentstudio --json images:generate \
+  -p "Make the background a snowy street at dusk" \
+  --image-url https://example.com/base.png
+```
+
+`--dimensions` is one of `square`, `square_hd`, `portrait_4_5`, `landscape_16_9`, and applies to text→image only — an edit keeps the source image's geometry. Exact pixels are the model's choice; read `width`/`height` back off the response.
+
+### Generate, then publish
+
+```bash
+MEDIA_ID=$(contentstudio --json images:generate \
+  -p "Flat-lay of autumn coffee beans on linen, warm daylight" \
+  --dimensions square_hd | jq -r '.data.media_id')
+
+contentstudio --json posts:create \
+  -c "Autumn blend is back." -i <account_id> -t draft --media-id "$MEDIA_ID"
+```
+
+`-t draft` keeps it reviewable; `-t scheduled -s "YYYY-MM-DD HH:MM:SS"` sends it. There is
+no publish-now type.
+
+### The dedicated tools
+
+```bash
+contentstudio --json images:product-image --product-image-url https://example.com/mug.png \
+  --instructions "on a marble kitchen counter, morning light"
+contentstudio --json images:headshot --image-url https://example.com/person.jpg --aspect-ratio 4:5
+contentstudio --json images:face-swap \
+  --target-image-url https://example.com/scene.png \
+  --face-image-url https://example.com/face.jpg
+contentstudio --json images:outfit-swap \
+  --target-image-url https://example.com/model.jpg \
+  --outfit-image-url https://example.com/jacket.png
+contentstudio --json images:upscale --image-url https://example.com/small.png --resolution 2k
+contentstudio --json images:remove-background --image-url https://example.com/mug.png
+```
+
+Allowed values for `--resolution` and `--aspect-ratio` come from that tool's `controls` in `images:tools` — they differ per tool, so the CLI forwards them rather than second-guessing the list.
+
+Those `controls` describe the **underlying** tool, though, not the public payload: a control with no matching flag cannot be sent, not even through `images:tool --body`. `upscale` advertises `model` and `upscale_factor` and the API accepts neither; `headshot` and `face-swap` report `accepts_instructions: true` but only `images:product-image` has `--instructions`. An unsupported field is dropped without an error, so it looks like it worked — the flags each command exposes are the real field set.
+
+Every generating command takes `--dry-run`, `--timeout <seconds>` and `--json`.
+
+### Any tool, every control
+
+`images:tool <tool_key> --body '<json>'` posts a raw payload to any tool the API exposes. This is how you reach the controls the dedicated commands don't spell out — `image-to-image`'s `style`, `image_resolution`, `image_quality`, multiple `attachments`, `reference_image_urls` — and it keeps working when a tool is added upstream:
+
+```bash
+contentstudio --json images:tool image-to-image --body '{
+  "prompt": "same mug, editorial magazine styling",
+  "attachments": ["https://example.com/mug.png"],
+  "aspect_ratio": "4:5"
+}'
+```
+
+### The response
+
+```json
+{
+  "ok": true,
+  "data": {
+    "media_id": "66f1a2b3c4d5e6f708192a3b",
+    "url": "https://storage.googleapis.com/contentstudio/.../generated.png",
+    "width": 1024,
+    "height": 1024,
+    "mime_type": "image/png",
+    "model_used": "nano-banana-pro",
+    "brand_applied": false,
+    "credits": { "consumed": 1, "available": 412 },
+    "persist_error": null
+  }
+}
+```
+
+- **`media_id` is the durable handle** — pass it to `posts:create --media-id`. `url` is for previews and for chaining one tool into the next; don't store it.
+- **Check `persist_error` before treating a success as done.** The image was generated *and charged* but could not be saved, so `media_id` is `null` and `url` is a temporary provider link. `media_storage_full` means the workspace is out of media storage and retrying will fail the same way; anything else is worth one retry.
+- **`model_used` names the model that actually ran and is not one of the `images:models` values** — it comes back provider-prefixed (`fal-ai/nano-banana-pro` for a generate, `pixelcut/background-removal` for a background removal). Don't compare it for equality with `--model`. Credit cost follows it (most 1, `gpt-image-2` 5), so read `credits.consumed` rather than assuming. `credits.available` is `null` when the balance could not be read — never `0` as a stand-in.
+- **`brand_applied` is always `false` for the tool commands and for `images:generate --image-url`.** Tools and edits do not apply brand knowledge; only text→image `--use-brand` does.
+
+### Input URLs
+
+Every URL you pass in is downloaded by the image service, so it must be publicly reachable over `http`/`https` — no auth, no expired signature, no private bucket, and no local path. The CLI rejects a non-`http(s)` value before spending a request credit; a URL the service itself cannot fetch comes back as `ValidationError` / `IMAGE_INPUT_REJECTED` and costs no image credits.
+
+To use a local file, put it in the media library first:
+
+```bash
+URL=$(contentstudio --json media:upload --file ./mug.png | jq -r '.data.url')
+contentstudio --json images:upscale --image-url "$URL"
+```
+
+Tools chain the same way — a media-library `url` from one call is valid input to the next (generate → upscale → remove-background). Each call is charged separately.
+
+### Timeouts and retries
+
+Generation is synchronous and can take a while. The server's own deadline is **120 seconds** (past that it answers `504` / `AI_SERVICE_TIMEOUT`), and the CLI waits **150 seconds** by default so a server-side timeout surfaces as that error rather than an opaque local abort. Override with `--timeout <seconds>`; keep it above 120.
+
+Unlike the rest of the CLI, **the generating commands do not auto-retry** `429`/`5xx`. These POSTs are billable and not idempotent — an automatic retry can consume a second image credit — so retrying is left to you. The three discovery commands retry normally.
+
+### Errors
+
+| `error_code` | CLI error | What to do |
+|---|---|---|
+| `IMAGE_CREDIT_LIMIT_EXCEEDED` | `CreditLimitError` (exit 8) | Out of image credits; top up or wait for the cycle. Nothing was charged. The check is strict — a 5-credit model with 3 left is refused, not downgraded |
+| `CONTENT_BLOCKED` | `ValidationError` | The content policy refused the prompt; rephrase it. Retrying as-is fails again |
+| `IMAGE_INPUT_REJECTED` | `ValidationError` | Usually an image URL the service could not download; also a too-small or too-large source |
+| `TOOL_NOT_FOUND` | `NotFoundError` | Unknown, disabled, or a video tool. Re-read `images:tools` |
+| `RATE_LIMIT_EXCEEDED` | `RateLimitError` | 30 requests/minute, shared with the ContentStudio app's own AI usage on this account. Wait out the minute |
+| `AI_SERVICE_TIMEOUT` | `BackendError` | The service did not finish in 120s. Retry with backoff, or use a faster model |
+| `AI_SERVICE_UNAVAILABLE` | `BackendError` | Retry promptly. On a tool run this can arrive after the credit was taken |
+
+A `403` with no `error_code` is a membership or API-request-credit problem and stays an `AuthError`.
+
+Video tools (`image-to-video`, `motion-control`, `lip-sync`, `talking-avatar`) are not exposed on this API — they answer `TOOL_NOT_FOUND` like an unknown key. Sample workspaces are read-only: the three discovery commands work, generation returns `403`.
+
 ## Platform-Specific Examples
 
 The full body schema accepts platform-specific options. These examples show the most common configurations.
@@ -993,7 +1139,7 @@ Agents check both `ok` and the process exit code (non-zero on error).
 
 ### 2. Dry-run by default for safety
 
-Every mutating command (`posts:create`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`) supports `--dry-run` — the agent can validate a payload before committing.
+Every mutating command (`posts:create`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`, and every `images:*` command that generates) supports `--dry-run` — the agent can validate a payload before committing.
 
 ### 3. Discoverable via `npx skills add`
 
@@ -1126,6 +1272,11 @@ The CLI wraps these endpoints from the ContentStudio v1 public API (plus the wor
 | DELETE | `/workspaces/{w}/posts/{p}` | `posts:delete` |
 | POST   | `/workspaces/{w}/posts/{p}/approval` | `posts:approve`, `posts:reject` |
 | POST   | `/workspaces/{w}/scheduling/optimal-times` | `scheduling:best-times` |
+| GET    | `/workspaces/{w}/ai/images/tools` | `images:tools` |
+| GET    | `/workspaces/{w}/ai/images/models` | `images:models` |
+| GET    | `/workspaces/{w}/ai/brand` | `images:brand` |
+| POST   | `/workspaces/{w}/ai/images/generate` | `images:generate` |
+| POST   | `/workspaces/{w}/ai/images/tools/{tool_key}` | `images:<tool>`, `images:tool <tool_key>` |
 | GET    | `/workspaces/{w}/posts/{p}/comments` | `comments:list` |
 | POST   | `/workspaces/{w}/posts/{p}/comments` | `comments:add` |
 
@@ -1176,9 +1327,11 @@ The CLI provides typed errors with non-zero exit codes:
 | 4 | `ValidationError` | 422 | Malformed request — check `message` for field errors |
 | 5 | `RateLimitError` | 429 | Too many calls — back off and retry |
 | 6 | `BackendError` | 5xx / network | Upstream issue — retry with backoff |
+| 7 | `ConflictError` | 409 | Resource already exists, or a send's delivery outcome is undetermined — verify before retrying |
+| 8 | `CreditLimitError` | 403 | Out of AI image credits (`images:*`) — top up or wait for the cycle. Nothing was charged |
 | 1 | `ConfigError` | — | Local config issue (no key/workspace set) — see `hint` |
 
-The CLI auto-retries on `429` and `5xx` (up to 2 attempts with exponential backoff). Connection timeouts also retry.
+The CLI auto-retries on `429` and `5xx` (up to 2 attempts with exponential backoff). Connection timeouts also retry. The two AI image generation calls are the exception — they are billable and not idempotent, so they never auto-retry.
 
 ## Quick Reference
 
@@ -1224,6 +1377,20 @@ contentstudio --json media:list [--type images|videos] [--sort recent]          
 contentstudio --json media:upload --file <path>                                    # Upload local file
 contentstudio --json media:upload --url <url>                                      # Import from URL
 
+# AI images
+contentstudio --json images:tools                                                   # Tools + their inputs
+contentstudio --json images:models                                                  # Accepted models
+contentstudio --json images:brand                                                   # Will --use-brand apply?
+contentstudio --json images:generate -p "<prompt>" [--dimensions square_hd]         # Prompt → image
+contentstudio --json images:generate -p "<edit>" --image-url <url>                   # Edit an image
+contentstudio --json images:product-image --product-image-url <url>                  # Restage a product
+contentstudio --json images:headshot --image-url <url>                               # Headshot
+contentstudio --json images:face-swap --target-image-url <url> --face-image-url <url>
+contentstudio --json images:outfit-swap --target-image-url <url> --outfit-image-url <url>
+contentstudio --json images:upscale --image-url <url>                                # Upscale
+contentstudio --json images:remove-background --image-url <url>                      # Cut out subject
+contentstudio --json images:tool <tool_key> --body '<json>'                          # Any tool, all controls
+
 # Globals
 contentstudio --version                                                             # Print version
 contentstudio --help                                                                # Top-level help
@@ -1254,7 +1421,8 @@ contentstudio-agent/
 │       ├── lookups.ts        # accounts/campaigns/categories/labels/team list commands
 │       ├── posts.ts          # posts:list, posts:create, posts:delete, posts:approve, posts:reject
 │       ├── comments.ts       # comments:list, comments:add
-│       └── media.ts          # media:list, media:upload
+│       ├── media.ts          # media:list, media:upload
+│       └── images.ts         # images:generate, images:tools/models/brand, one command per tool
 ├── tests/                    # vitest + nock unit + real-API E2E
 ├── skills/contentstudio/SKILL.md  # symlink → ../../SKILL.md
 ├── .claude-plugin/           # Claude Code plugin manifest

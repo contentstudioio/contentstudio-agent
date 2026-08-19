@@ -1,7 +1,7 @@
 {
   "name": "contentstudio-cli",
-  "version": "1.2.0",
-  "description": "ContentStudio CLI — schedule social-media posts, manage the social inbox (DMs, comments, reviews), media, accounts, and approvals across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile via the ContentStudio API.",
+  "version": "1.3.0",
+  "description": "ContentStudio CLI — schedule social-media posts, generate AI images, manage the social inbox (DMs, comments, reviews), media, accounts, and approvals across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile via the ContentStudio API.",
   "main": "dist/index.js",
   "bin": {
     "contentstudio": "./dist/index.js"
@@ -43,7 +43,9 @@
     "inbox",
     "social-inbox",
     "dm",
-    "comments"
+    "comments",
+    "ai-image-generation",
+    "image-generation"
   ],
   "author": "ContentStudio",
   "license": "MIT",

@@ -18,6 +18,7 @@ import { registerComments } from "./commands/comments";
 import { registerCrud } from "./commands/crud";
 import { registerConnect } from "./commands/connect";
 import { registerFacebook } from "./commands/facebook";
+import { registerImages } from "./commands/images";
 import { registerInbox } from "./commands/inbox";
 import { registerLookups } from "./commands/lookups";
 import { registerMedia } from "./commands/media";
@@ -64,6 +65,7 @@ cli = registerFacebook(cli);
 cli = registerMedia(cli);
 cli = registerPosts(cli);
 cli = registerScheduling(cli);
+cli = registerImages(cli);
 cli = registerComments(cli);
 cli = registerInbox(cli);
 

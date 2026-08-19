@@ -22,6 +22,7 @@ import {
   addComment,
   createPost,
   deletePost,
+  getAiBrandStatus,
   getMe,
   listAccounts,
   listCampaigns,
@@ -38,6 +39,8 @@ import {
   listInboxMessages,
   listInboxNotes,
   listInboxPostComments,
+  listImageModels,
+  listImageTools,
   listInboxTags,
   schedulingOptimalTimes,
   searchInboxElements,
@@ -394,6 +397,77 @@ describeIfCreds("Scheduling E2E (read-only)", () => {
       expect(d.ok).toBe(true);
       expect(d.data).toHaveProperty("meta");
       expect(d.data).toHaveProperty("individual");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+// Discovery only. The two generating endpoints are deliberately not exercised
+// here: they cost real image credits per run and take up to 120s, which is not
+// something a test suite should spend on every push. The shapes those calls
+// return are covered by the nock tests in api.test.ts.
+describeIfCreds("AI images E2E (discovery only, no credits spent)", () => {
+  it("tools, models and brand status come back in the documented shapes", async () => {
+    const c = mkClient();
+    const tools = await listImageTools(c, WORKSPACE_ID!);
+    expect(Array.isArray(tools)).toBe(true);
+    // An empty list means the catalogue is unreachable, which is a valid 200.
+    if (tools.length) {
+      expect(typeof tools[0].key).toBe("string");
+      expect(Array.isArray(tools[0].inputs)).toBe(true);
+      // Video tools are not exposed on this API.
+      const keys = tools.map((t: any) => t.key);
+      for (const video of ["image-to-video", "motion-control", "lip-sync", "talking-avatar"]) {
+        expect(keys, video).not.toContain(video);
+      }
+    }
+
+    const models = await listImageModels(c, WORKSPACE_ID!);
+    expect(Array.isArray(models)).toBe(true);
+    for (const m of models) expect(typeof m).toBe("string");
+
+    const brand = await getAiBrandStatus(c, WORKSPACE_ID!);
+    expect(typeof brand.configured).toBe("boolean");
+    expect(typeof brand.enabled).toBe("boolean");
+  });
+
+  // Regression: the table used to print the descriptor's `inputs[].name`
+  // (`image`, `target_image`, `product`) as if those were flags. They are the
+  // underlying tool's slot names — no such flag exists.
+  it("human-mode images:tools prints real flags, not descriptor slot names", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "cs-cli-e2e-imgtbl-"));
+    try {
+      const r = runCLI(["images:tools"], {
+        CONTENTSTUDIO_CONFIG_PATH: path.join(tmp, "config.json"),
+        CONTENTSTUDIO_API_KEY: API_KEY!,
+        CONTENTSTUDIO_WORKSPACE_ID: WORKSPACE_ID!,
+        CONTENTSTUDIO_BASE_URL: BASE_URL,
+      });
+      expect(r.code).toBe(0);
+      expect(r.stdout).toContain("images:remove-background --image-url*");
+      expect(r.stdout).not.toMatch(/^\s*remove-background\s+image\s/m);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("--json images:tools returns ok=true", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "cs-cli-e2e-img-"));
+    try {
+      if (!fs.existsSync(CLI)) {
+        throw new Error("dist/index.js missing — run 'npm run build' first.");
+      }
+      const r = runCLI(["--json", "images:tools"], {
+        CONTENTSTUDIO_CONFIG_PATH: path.join(tmp, "config.json"),
+        CONTENTSTUDIO_API_KEY: API_KEY!,
+        CONTENTSTUDIO_WORKSPACE_ID: WORKSPACE_ID!,
+        CONTENTSTUDIO_BASE_URL: BASE_URL,
+      });
+      expect(r.code).toBe(0);
+      const d = JSON.parse(r.stdout);
+      expect(d.ok).toBe(true);
+      expect(Array.isArray(d.data)).toBe(true);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

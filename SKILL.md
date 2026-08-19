@@ -1,7 +1,7 @@
 ---
 name: contentstudio
-description: ContentStudio is a tool to schedule social-media posts and manage the social inbox across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile. Use when the user wants to list/create/delete/approve posts, find the best time to post, read and reply to DMs, comments and reviews, manage media, or audit workspaces, accounts, campaigns, labels, categories, or team-members on their ContentStudio account.
-version: 1.2.0
+description: ContentStudio is a tool to schedule social-media posts and manage the social inbox across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile. Use when the user wants to list/create/delete/approve posts, find the best time to post, generate or edit images with AI, read and reply to DMs, comments and reviews, manage media, or audit workspaces, accounts, campaigns, labels, categories, or team-members on their ContentStudio account.
+version: 1.3.0
 homepage: https://api.contentstudio.io/guide
 metadata: {"openclaw":{"emoji":"📅","requires":{"bins":["contentstudio"],"env":["CONTENTSTUDIO_API_KEY"]}}}
 ---
@@ -332,6 +332,52 @@ Errors: 422 for unknown accounts or a workspace with no connected accounts; 502 
 | `media:list [--type images\|videos] [--sort recent\|...]` | List media assets |
 | `media:upload --file <local_path>` | Upload a local file |
 | `media:upload --url <external_url>` | Import from external URL |
+
+### AI images
+
+| Command | Purpose |
+|---------|---------|
+| `images:tools` | The image tools this API can invoke, with each tool's required inputs and control options |
+| `images:models` | Model identifiers `images:generate` accepts |
+| `images:brand` | `{configured, enabled}` — whether `--use-brand` will apply anything |
+| `images:generate -p "<prompt>"` | Prompt → image, saved to the media library |
+| `images:generate -p "<edit>" --image-url <url>` | Edit an existing image instead of generating from scratch |
+| `images:product-image --product-image-url <url>` | Restage a product photo |
+| `images:headshot --image-url <url>` | Professional headshot from a photo of a person |
+| `images:face-swap --target-image-url <url> --face-image-url <url>` | Put one image's face onto another's subject |
+| `images:outfit-swap --target-image-url <url> --outfit-image-url <url>` | Virtual try-on |
+| `images:upscale --image-url <url>` | Raise an image's resolution |
+| `images:remove-background --image-url <url>` | Cut the subject out of its background |
+| `images:tool <tool_key> --body '<json>'` | Any tool, with its full control set (this is how you reach `image-to-image`'s `style`, `aspect_ratio`, `image_resolution`, `image_quality`, multiple `attachments`, `reference_image_urls`) |
+
+**Every generation returns the same payload, and `data.media_id` is the handle you pass to `posts:create --media-id`.** That two-step is the normal way to publish an AI image — see the generate-then-publish recipe in the Examples section.
+
+```jsonc
+{ "ok": true, "data": {
+    "media_id": "66f1a2b3c4d5e6f708192a3b",   // → posts:create --media-id
+    "url": "https://storage.googleapis.com/.../generated.png",
+    "width": 1024, "height": 1024, "mime_type": "image/png",
+    "model_used": "nano-banana-pro",            // may differ from --model
+    "brand_applied": false,
+    "credits": { "consumed": 1, "available": 412 },
+    "persist_error": null } }
+```
+
+- **`media_id` is the durable handle; `url` is not.** Use `url` for a preview or as the input to the next tool. Do not store it — a `url` returned alongside a `persist_error` is a temporary provider link.
+- **Check `persist_error` (or `media_id !== null`) before calling a 200 done.** The image was generated *and charged* but could not be saved: `media_storage_full` means the workspace is out of media storage (retrying costs another credit and fails again), anything else is worth one retry. Tell the user to download the `url` now.
+- **Tools chain.** A media-library `url` from one call is valid input to the next (generate → upscale → remove-background). Each call is charged separately.
+- **Every image URL you pass in must be publicly fetchable over http(s)** by the image service — no auth, no expired signed URL, no private bucket, no local path. Upload a local file with `media:upload --file` first and pass the returned URL. A URL the service cannot download is `ValidationError` (`IMAGE_INPUT_REJECTED`), not a service outage.
+- **Generation is slow and billable.** The server's deadline is 120s; the CLI waits 150s (`--timeout <seconds>` to change it). These calls are **not retried** — the built-in 429/5xx retry is off for them, because re-running a generation can consume a second image credit. Retry deliberately, not in a loop.
+- **`--model` is optional.** Omit it for the service default. Costs differ (most models 1 image credit, `gpt-image-2` 5), so read `credits.consumed` rather than assuming.
+- **`model_used` is not one of the `images:models` values** — it comes back provider-prefixed (`fal-ai/nano-banana-pro`, `pixelcut/background-removal`) and names the model that actually ran after any fallback. Report it; never compare it for equality with `--model`.
+- **`images:tools` `controls` describe the underlying tool, not the public payload.** Take `--resolution` / `--aspect-ratio` values from there, but a control with no matching flag cannot be sent at all — `upscale` lists `model` and `upscale_factor`, and neither is in the API's tool payload. Likewise `accepts_instructions: true` on `headshot` and `face-swap` is not reachable: only `images:product-image` has `--instructions`. Sending an unsupported field is dropped in silence, so it will look like it worked.
+- **`--dimensions`** is `square`, `square_hd`, `portrait_4_5` or `landscape_16_9`, text→image only. Exact pixels are the model's choice — read `width`/`height` back. Anything else is rejected by the CLI before the call.
+- **Brand knowledge is a boolean, read-only.** `--use-brand` on `images:generate` only; it is resolved server-side and no brand ID or brand content is ever accepted or returned. `--use-brand` with no brand profile is `brand_applied: false`, not an error — `images:brand` tells you in advance. **The tool commands and `images:generate --image-url` always report `brand_applied: false`** — edits and tools do not apply brand knowledge.
+- **`--dry-run` on every generating command** prints the endpoint and body and calls nothing. Use it to show the user the prompt before spending a credit. The three discovery commands are reads and need no `--dry-run`.
+- **Rate limit: 30 requests/minute**, shared with the ContentStudio app's own AI usage on the same account. A `RateLimitError` here needs the full minute.
+- Video tools (`image-to-video`, `motion-control`, `lip-sync`, `talking-avatar`) are **not** on this API; asking for one is `NotFoundError` (`TOOL_NOT_FOUND`), same as an unknown key.
+- `images:tools` answering with an empty list means the catalogue is temporarily unreachable, not that the workspace has no tools. Retry rather than telling the user there are none.
+- Sample workspaces are read-only: the three discovery commands work, both generating paths return 403.
 
 ### Lookup tables (read)
 
@@ -800,6 +846,68 @@ If `data.global` is `null`, the workspace has too little history — don't repor
 error. Say which accounts were skipped (`meta.missing_entities`) and offer to
 schedule at a time the user chooses instead.
 
+### Generate an image and publish it (two steps)
+
+```bash
+# 0. Optional: see what is available. Both are configuration, so cache them.
+contentstudio --json images:models
+contentstudio --json images:tools
+
+# 1. Show the user the prompt first — generating costs an image credit.
+contentstudio --json images:generate \
+  -p "Flat-lay of autumn coffee beans on linen, warm daylight" \
+  --dimensions square_hd --dry-run
+
+# 2. Generate. Takes seconds; --json gives you data.media_id.
+MEDIA_ID=$(contentstudio --json images:generate \
+  -p "Flat-lay of autumn coffee beans on linen, warm daylight" \
+  --dimensions square_hd | jq -r '.data.media_id')
+
+# 3. Attach it. media_id goes in as --media-id, unchanged.
+contentstudio --json posts:create \
+  -c "Autumn blend is back." -i <account_id> -t draft \
+  --media-id "$MEDIA_ID" --dry-run
+
+# 4. Drop --dry-run once the user approves the image and the text. That creates a
+#    draft; to send it instead, swap `-t draft` for
+#    `-t scheduled -s "YYYY-MM-DD HH:MM:SS"`. There is no publish-now type —
+#    --publish-type takes scheduled|draft|queued|content_category.
+```
+
+If `media_id` comes back `null`, read `persist_error`: the image exists at `data.url`
+but is not in the media library, so `posts:create --media-id` has nothing to take.
+Either fix the cause (`media_storage_full` → free up storage) or use the URL now,
+before the provider link expires.
+
+Editing and chaining work the same way — the `url` of one result is the input to the next:
+
+```bash
+# Edit an existing image (the prompt describes the change, not the whole picture)
+contentstudio --json images:generate \
+  -p "Make the background a snowy street at dusk" \
+  --image-url https://example.com/base.png
+
+# Clean up a product shot, then restage it
+URL=$(contentstudio --json images:remove-background \
+        --image-url https://example.com/mug.png | jq -r '.data.url')
+contentstudio --json images:product-image --product-image-url "$URL" \
+  --instructions "on a marble kitchen counter, morning light"
+
+# A tool's own controls — the escape hatch reaches every field the API declares
+contentstudio --json images:tool image-to-image --body '{
+  "prompt": "same mug, editorial magazine styling",
+  "attachments": ["https://example.com/mug.png"],
+  "aspect_ratio": "4:5"
+}' --dry-run
+```
+
+Only ever pass URLs the image service can download. To use a local file, upload it first:
+
+```bash
+URL=$(contentstudio --json media:upload --file ./mug.png | jq -r '.data.url')
+contentstudio --json images:upscale --image-url "$URL"
+```
+
 ### List recent draft posts
 
 ```bash
@@ -891,7 +999,8 @@ contentstudio --json inbox:tag-attach <element_ref> \
 | `NotFoundError` | 404 | The resource doesn't exist or isn't in this workspace. |
 | `ValidationError` | 422 | Flattened Laravel-style field errors from the API. |
 | `ConflictError` | 409 | Resource already exists, or a send's delivery outcome is undetermined. Verify before retrying a send. |
-| `RateLimitError` | 429 | Wait a moment and retry. |
+| `RateLimitError` | 429 | Wait a moment and retry. On the AI image commands the bucket is 30/min and needs the full minute. |
+| `CreditLimitError` | 403 | Out of AI image credits (`images:*`). Top up or wait for the cycle; nothing was charged. Re-running `auth:login` cannot fix it. |
 | `BackendError` | 5xx or network | Retry after a short backoff. |
 | `ConfigError` | — (local) | Missing API key / workspace; run `auth:login` or pass flags. |
 
