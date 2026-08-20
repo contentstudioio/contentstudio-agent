@@ -11,17 +11,25 @@ import {
   addTeamMember,
   attachInboxTags,
   bulkUpdateInboxElements,
+  cancelAiVideoJob,
   deleteInboxComment,
   deleteInboxMessage,
   deleteInboxTags,
   detachInboxTag,
   createInboxTag,
+  estimateAiVideo,
+  generateAiVideo,
+  getAiVideoJob,
   getInboxContact,
   inboxSummary,
+  listAiVideoJobs,
+  listAiVideoModels,
+  listAiVideoTools,
   listInboxPostComments,
   listInboxTags,
   listInboxMessages,
   markInboxElementRead,
+  runAiVideoTool,
   searchInboxElements,
   sendInboxMessage,
   setInboxCommentHidden,
@@ -1148,5 +1156,187 @@ describe("Inbox — tags", () => {
       inbox_type: "conversation",
     });
     expect(qs).toMatchObject({ platform_id: "acc-9", inbox_type: "conversation" });
+  });
+});
+
+describe("AI Video", () => {
+  it("listAiVideoTools plucks the flat `tools` array", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/ai/videos/tools`)
+      .reply(200, {
+        status: true,
+        message: "ok",
+        tools: [{ key: "motion-control", label: "Motion Control" }],
+      });
+    const tools = await listAiVideoTools(mkClient(), "ws-1");
+    expect(tools).toEqual([{ key: "motion-control", label: "Motion Control" }]);
+  });
+
+  it("listAiVideoModels plucks the flat `models` array", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/ai/videos/models`)
+      .reply(200, {
+        status: true,
+        message: "ok",
+        models: [{ key: "kling-v2", provider: "kling", modes: ["text-to-video"] }],
+      });
+    const models = await listAiVideoModels(mkClient(), "ws-1");
+    expect(models).toEqual([
+      { key: "kling-v2", provider: "kling", modes: ["text-to-video"] },
+    ]);
+  });
+
+  it("estimateAiVideo posts the body and unwraps data", async () => {
+    let sentBody: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/ai/videos/estimate`, (body) => {
+        sentBody = body;
+        return true;
+      })
+      .reply(200, envelope({ credits: 12, estimated_seconds: 30 }));
+
+    const data: any = await estimateAiVideo(mkClient(), "ws-1", {
+      duration_seconds: 4,
+      generation_mode: "text-to-video",
+    });
+    expect(sentBody).toEqual({ duration_seconds: 4, generation_mode: "text-to-video" });
+    expect(data).toEqual({ credits: 12, estimated_seconds: 30 });
+  });
+
+  it("estimateAiVideo 502 → BackendError", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/ai/videos/estimate`)
+      .reply(502, { message: "upstream unavailable", error_code: "AI_SERVICE_UNAVAILABLE" });
+    await expect(estimateAiVideo(mkClient(), "ws-1", {})).rejects.toBeInstanceOf(
+      BackendError,
+    );
+  });
+
+  it("generateAiVideo posts prompt + options and unwraps job envelope", async () => {
+    let sentBody: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/ai/videos/generate`, (body) => {
+        sentBody = body;
+        return true;
+      })
+      .reply(200, envelope({ job_id: "job-1", status: "queued", status_url: "/workspaces/ws-1/ai/jobs/job-1", estimated_credits: 20 }));
+
+    const data: any = await generateAiVideo(mkClient(), "ws-1", {
+      prompt: "a cat riding a bike",
+      model: "kling-v2",
+    });
+    expect(sentBody).toEqual({ prompt: "a cat riding a bike", model: "kling-v2" });
+    expect(data.job_id).toBe("job-1");
+    expect(data.status).toBe("queued");
+  });
+
+  it("generateAiVideo rejects image_url + reference_image_urls locally (ConfigError, no request sent)", async () => {
+    const scope = nock(BASE).post(`${PATH}/workspaces/ws-1/ai/videos/generate`).reply(200, envelope({}));
+    expect(() =>
+      generateAiVideo(mkClient(), "ws-1", {
+        prompt: "x",
+        image_url: "https://img",
+        reference_image_urls: ["https://ref"],
+      }),
+    ).toThrow(ConfigError);
+    expect(scope.isDone()).toBe(false);
+  });
+
+  it("generateAiVideo 403 INSUFFICIENT_VIDEO_CREDITS → AuthError", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/ai/videos/generate`)
+      .reply(403, { message: "not enough credits", error_code: "INSUFFICIENT_VIDEO_CREDITS" });
+    await expect(
+      generateAiVideo(mkClient(), "ws-1", { prompt: "x" }),
+    ).rejects.toBeInstanceOf(AuthError);
+  });
+
+  it("runAiVideoTool posts to /ai/videos/tools/{tool_key}", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/ai/videos/tools/lip-sync`, {
+        video_url: "https://v",
+        audio_url: "https://a",
+      })
+      .reply(
+        200,
+        envelope({
+          job_id: "job-2",
+          status: "queued",
+          status_url: "/workspaces/ws-1/ai/jobs/job-2",
+          estimated_credits: null,
+          estimated_seconds: null,
+        }),
+      );
+    const data: any = await runAiVideoTool(mkClient(), "ws-1", "lip-sync", {
+      video_url: "https://v",
+      audio_url: "https://a",
+    });
+    expect(data.job_id).toBe("job-2");
+  });
+
+  it("runAiVideoTool 404 TOOL_NOT_FOUND → NotFoundError", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/ai/videos/tools/unknown-tool`)
+      .reply(404, { message: "tool not found", error_code: "TOOL_NOT_FOUND" });
+    await expect(
+      runAiVideoTool(mkClient(), "ws-1", "unknown-tool", {}),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("listAiVideoJobs paginates and forwards --status", async () => {
+    let qs: any = {};
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/ai/jobs`)
+      .query((q) => {
+        qs = q;
+        return true;
+      })
+      .reply(200, {
+        status: true,
+        message: "ok",
+        data: [{ job_id: "job-1", status: "queued" }],
+        current_page: 1,
+        per_page: 15,
+        total: 1,
+        last_page: 1,
+      });
+    const resp = await listAiVideoJobs(mkClient(), "ws-1", { status: "queued" });
+    expect(qs.status).toBe("queued");
+    expect(resp.data).toEqual([{ job_id: "job-1", status: "queued" }]);
+    expect(resp.pagination!.total).toBe(1);
+  });
+
+  it("getAiVideoJob unwraps the single-job envelope", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/ai/jobs/job-1`)
+      .reply(200, envelope({ job_id: "job-1", status: "completed", result: { url: "https://cdn/x.mp4" } }));
+    const data: any = await getAiVideoJob(mkClient(), "ws-1", "job-1");
+    expect(data.status).toBe("completed");
+  });
+
+  it("getAiVideoJob 404 JOB_NOT_FOUND → NotFoundError", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/ai/jobs/missing`)
+      .reply(404, { message: "job not found", error_code: "JOB_NOT_FOUND" });
+    await expect(getAiVideoJob(mkClient(), "ws-1", "missing")).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+  });
+
+  it("cancelAiVideoJob DELETEs the job and unwraps the cancelled envelope", async () => {
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/ai/jobs/job-1`)
+      .reply(200, envelope({ job_id: "job-1", status: "cancelled" }));
+    const data: any = await cancelAiVideoJob(mkClient(), "ws-1", "job-1");
+    expect(data).toEqual({ job_id: "job-1", status: "cancelled" });
+  });
+
+  it("cancelAiVideoJob 409 JOB_ALREADY_TERMINAL → ConflictError", async () => {
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/ai/jobs/job-1`)
+      .reply(409, { message: "already terminal", error_code: "JOB_ALREADY_TERMINAL" });
+    await expect(cancelAiVideoJob(mkClient(), "ws-1", "job-1")).rejects.toBeInstanceOf(
+      ConflictError,
+    );
   });
 });

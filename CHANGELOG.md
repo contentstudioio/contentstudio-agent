@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — AI Video support
+
+8 new commands under the `ai-video:` namespace, wrapping the ContentStudio
+public API v1 AI video endpoints.
+
+- `ai-video:tools` / `ai-video:models` — read-only catalogs (flat responses,
+  no pagination).
+- `ai-video:estimate` — real credit/time estimate; nothing submitted or
+  charged, no `--dry-run` needed.
+- `ai-video:generate` — submit an async text/image/reference-to-video job
+  (`--image-url` and `--reference-image-url` are mutually exclusive;
+  `--use-brand` resolves brand assets server-side, no `--brand-id`).
+- `ai-video:run-tool <tool_key>` — `motion-control` / `lip-sync` /
+  `talking-avatar`, each with a locally-validated required input pair.
+- `ai-video:jobs` (paginated) / `ai-video:job <job_id>` / `ai-video:cancel-job
+  <job_id>` — track and cancel jobs submitted through this API.
+- `ai-video:generate`, `ai-video:run-tool`, and `ai-video:cancel-job` all
+  support `--dry-run` and are on the SKILL.md mutating-confirmation list.
+
 ## Unreleased — Analytics support
 
 99 new commands under the `analytics:` namespace, one per ContentStudio

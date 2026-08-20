@@ -1061,7 +1061,7 @@ contentstudio --json posts:list --status pending_approval --per-page 50 \
 
 ## API Endpoints
 
-The CLI wraps these 20 endpoints from the ContentStudio v1 public API. Base URL: `https://api.contentstudio.io/api/v1`.
+The CLI wraps these 28 endpoints from the ContentStudio v1 public API (plus the Analytics and Social Inbox endpoints summarized in their own sections below). Base URL: `https://api.contentstudio.io/api/v1`.
 
 | Method | Endpoint | CLI command |
 |--------|----------|-------------|
@@ -1086,6 +1086,14 @@ The CLI wraps these 20 endpoints from the ContentStudio v1 public API. Base URL:
 | POST   | `/workspaces/{w}/posts/{p}/approval` | `posts:approve`, `posts:reject` |
 | GET    | `/workspaces/{w}/posts/{p}/comments` | `comments:list` |
 | POST   | `/workspaces/{w}/posts/{p}/comments` | `comments:add` |
+| GET    | `/workspaces/{w}/ai/videos/tools` | `ai-video:tools` |
+| GET    | `/workspaces/{w}/ai/videos/models` | `ai-video:models` |
+| POST   | `/workspaces/{w}/ai/videos/estimate` | `ai-video:estimate` |
+| POST   | `/workspaces/{w}/ai/videos/generate` | `ai-video:generate` |
+| POST   | `/workspaces/{w}/ai/videos/tools/{tool_key}` | `ai-video:run-tool <tool_key>` |
+| GET    | `/workspaces/{w}/ai/jobs` | `ai-video:jobs` |
+| GET    | `/workspaces/{w}/ai/jobs/{job_id}` | `ai-video:job <job_id>` |
+| DELETE | `/workspaces/{w}/ai/jobs/{job_id}` | `ai-video:cancel-job <job_id>` |
 
 Full OpenAPI 3.0 spec: <https://api.contentstudio.io/api-docs.json>
 Human-readable docs: <https://api.contentstudio.io/guide>
@@ -1181,6 +1189,17 @@ contentstudio --json media:upload --url <url>                                   
 contentstudio --json analytics:<platform>-<report> --platform-id <id> --start-date <d> --end-date <d>
 contentstudio --json analytics:<platform>-single-post --platform-id <id> --post-id <native_id>
 contentstudio analytics:<platform>-<report> --help                                 # Exact options per command
+
+# AI Video
+contentstudio --json ai-video:tools                                                # Enabled tools
+contentstudio --json ai-video:models                                               # Selectable models
+contentstudio --json ai-video:estimate [--duration 6] [--model <key>]              # Credit/time estimate, no charge
+contentstudio --json ai-video:generate --prompt "a cat riding a bike" --dry-run    # Preview, no API call
+contentstudio --json ai-video:generate --prompt "..." --image-url <url>            # Image-to-video job
+contentstudio --json ai-video:run-tool lip-sync --video-url <url> --audio-url <url> --dry-run
+contentstudio --json ai-video:jobs [--status queued]                               # List submitted jobs
+contentstudio --json ai-video:job <job_id>                                         # Poll one job
+contentstudio --json ai-video:cancel-job <job_id>                                  # Cancel an active job
 
 # Globals
 contentstudio --version                                                             # Print version

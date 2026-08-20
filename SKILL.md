@@ -84,7 +84,9 @@ contentstudio workspaces:use <workspace_id>
 
 The CLI silently defaults to the active workspace (whatever was set by `workspaces:use`). That default is fine for **read-only** calls (`workspaces:list`, `accounts:list`, `posts:list`, `media:list`, etc.) — just use the active workspace.
 
-But for any **mutating** action — `accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `accounts:remove`, `posts:create`, `posts:update`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`, `workspaces:update`, `workspaces:delete`, `labels:create`, `labels:update`, `labels:delete`, `campaigns:create`, `campaigns:update`, `campaigns:delete`, `team:add`, `team:update`, `team:remove`, and every `inbox:*` write (`inbox:send`, `inbox:comment-add`, `inbox:comment-delete`, `inbox:review-reply`, `inbox:update`, `inbox:tag-*`, …) — you MUST confirm the workspace with the user first, even if a workspace is already active. Don't assume the active workspace is the one they want to mutate.
+But for any **mutating** action — `accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `accounts:remove`, `posts:create`, `posts:update`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`, `workspaces:update`, `workspaces:delete`, `labels:create`, `labels:update`, `labels:delete`, `campaigns:create`, `campaigns:update`, `campaigns:delete`, `team:add`, `team:update`, `team:remove`, every `inbox:*` write (`inbox:send`, `inbox:comment-add`, `inbox:comment-delete`, `inbox:review-reply`, `inbox:update`, `inbox:tag-*`, …), and `ai-video:generate` / `ai-video:run-tool` / `ai-video:cancel-job` — you MUST confirm the workspace with the user first, even if a workspace is already active. Don't assume the active workspace is the one they want to mutate.
+
+> **AI video generation costs credits.** `ai-video:generate` and `ai-video:run-tool` submit a real (billed) job the moment they're called without `--dry-run` — run `ai-video:estimate` first when the flags support it, show the estimate/cost to the user, and `--dry-run` the actual call before running it for real. `ai-video:cancel-job` may also charge for partial work already consumed — don't cancel a job on the user's behalf without confirming.
 
 > **Inbox writes are customer-facing.** `inbox:send`, `inbox:comment-add`, and `inbox:review-reply` publish text to a real person on a real social platform, and there is no undo on the provider side. Always `--dry-run` first, show the exact message text to the user, and get explicit approval before sending. Never compose-and-send a reply to a customer in one step.
 
@@ -171,9 +173,9 @@ Did the user say "all" / "every" / "complete list" / "every single"?
 ### Endpoints that paginate
 
 All `*:list` commands paginate:
-`workspaces:list`, `accounts:list`, `posts:list`, `comments:list`, `media:list`, `campaigns:list`, `categories:list`, `labels:list`, `team:list`, `approval-workflows:list`.
+`workspaces:list`, `accounts:list`, `posts:list`, `comments:list`, `media:list`, `campaigns:list`, `categories:list`, `labels:list`, `team:list`, `approval-workflows:list`, `ai-video:jobs`.
 
-Non-list commands (`auth:whoami`, `posts:create`, `posts:delete`, `media:upload`, etc.) never include `pagination` in their envelope.
+Non-list commands (`auth:whoami`, `posts:create`, `posts:delete`, `media:upload`, `ai-video:tools`, `ai-video:models`, `ai-video:job`, etc.) never include `pagination` in their envelope.
 
 ---
 
@@ -698,6 +700,38 @@ is wrong.
 | `analytics:twitter-single-tweet` | Get a single Twitter/X tweet by ID | --platform-id, --post-id |
 | `analytics:twitter-summary` | Twitter summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
 | `analytics:twitter-top-tweets` | Twitter top-performing tweets | --platform-id, --start-date, --end-date |
+
+### AI Video
+
+| Command | Purpose |
+|---------|---------|
+| `ai-video:tools` | List enabled AI video tools (`key`, `label`, `description?`, `inputs[]`, `controls[]`) |
+| `ai-video:models` | List every model `ai-video:generate` / `ai-video:estimate` can select (`key`, `provider`, `modes[]`, `supported_resolutions?`, `supported_durations?`, `supported_ratios?`, `supports_audio?`, defaults) |
+| `ai-video:estimate [--duration] [--model] [--resolution] [--mode text-to-video\|image-to-video\|reference-to-video] [--audio] [--aspect-ratio] [--enhance-prompt]` | Real credit/time estimate. Nothing submitted or charged |
+| `ai-video:generate --prompt "..." [--image-url \| --reference-image-url <url> (repeatable)] [--model] [--duration] [--resolution] [--aspect-ratio] [--audio] [--enhance-prompt] [--style] [--use-brand]` | Submit an async video generation job |
+| `ai-video:run-tool motion-control --image-url <url> --video-url <url>` | Apply motion from a driving video to a source image |
+| `ai-video:run-tool lip-sync --video-url <url> --audio-url <url>` | Sync a video's mouth movement to an audio track |
+| `ai-video:run-tool talking-avatar --image-url <url> --audio-url <url>` | Animate a still image into a talking avatar from audio |
+| `ai-video:jobs [--status queued\|processing\|completed\|failed\|cancelled] [--page] [--per-page]` | Paginated list of video jobs submitted through this API (never chat/internal-tool jobs) |
+| `ai-video:job <job_id>` | Single job status — local snapshot if terminal, live-polled otherwise |
+| `ai-video:cancel-job <job_id>` | Cancel a still-active job. May charge for partial work already consumed |
+
+**`ai-video:generate` notes:**
+- `--prompt` is required, max 1000 characters.
+- Omitting both `--image-url` and `--reference-image-url` is **text-to-video**. `--image-url` switches to **image-to-video**. `--reference-image-url` (repeatable, max 8) switches to **reference-to-video**. `--image-url` and `--reference-image-url` are **mutually exclusive** — the CLI raises a `ConfigError` locally if both are set.
+- `--use-brand` (default false) resolves brand assets **server-side** — there is no `--brand-id` flag; the backend does not accept one.
+- Response `data`: `{ job_id, status_url (relative path to ai-video:job), status, estimated_credits, estimated_seconds? }`. Poll `ai-video:job <job_id>` (or fetch `status_url` directly) until `status` is terminal.
+
+**`ai-video:run-tool <tool_key>` notes:**
+- `tool_key` is one of the keys from `ai-video:tools` — currently `motion-control`, `lip-sync`, `talking-avatar`. The CLI validates the required input pair locally before sending (`motion-control` → image+video, `lip-sync` → video+audio, `talking-avatar` → image+audio) and raises `ConfigError` if a required flag is missing.
+- No upfront estimate — the response's `estimated_credits` / `estimated_seconds` are always `null`. Run `ai-video:tools` to see each tool's declared `inputs[]` / `controls[]` if the flags above don't cover a newer tool.
+
+**`ai-video:jobs` / `ai-video:job` / `ai-video:cancel-job` notes:**
+- `ai-video:jobs` only ever returns jobs **submitted through this API** — chat/internal-tool-generated jobs never appear.
+- Job `status` is one of `queued`, `processing`, `completed`, `failed`, `cancelled`. `stage` / `message` / `result` / `credits` / `brand_applied` are present depending on status.
+- `ai-video:cancel-job` 409s (`ConflictError`) with `JOB_ALREADY_TERMINAL` if the job already finished, failed, or was cancelled — check `ai-video:job <job_id>` first if unsure.
+
+**Errors specific to AI Video** (in addition to the standard table below): 403 `INSUFFICIENT_VIDEO_CREDITS` (not enough credits — surfaces as `AuthError`), 403 `STORAGE_LIMIT_EXCEEDED` (surfaces as `AuthError`), 404 `TOOL_NOT_FOUND` / `JOB_NOT_FOUND` (`NotFoundError`), 409 `JOB_ALREADY_TERMINAL` (`ConflictError`), 502 `AI_SERVICE_UNAVAILABLE` / 504 `AI_SERVICE_TIMEOUT` (`BackendError` — safe to retry after a short backoff).
 
 ---
 

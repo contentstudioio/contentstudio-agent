@@ -2305,6 +2305,145 @@ export function youtubeAnalyticsWatchTimeTrendDaily(
   return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/watch-time-trend-daily`, analyticsQuery(params));
 }
 
+// ─────────────────────────────────────────────────────────────────
+// AI Video — tool/model catalogs, estimate, generate, dedicated tools
+// (motion-control / lip-sync / talking-avatar), and async job tracking.
+// (added in v1.2.0)
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * GET /workspaces/{w}/ai/videos/tools — enabled AI video tools. Flat
+ * response ({status, message, tools: [...]}), so unwrap:false + pluck.
+ */
+export async function listAiVideoTools(c: Client, workspaceId: string) {
+  const raw = await c.request<any>(
+    "GET",
+    `/workspaces/${workspaceId}/ai/videos/tools`,
+    { unwrap: false },
+  );
+  return Array.isArray(raw?.tools) ? raw.tools : [];
+}
+
+/**
+ * GET /workspaces/{w}/ai/videos/models — every model generate/estimate can
+ * select. Flat response ({status, message, models: [...]}).
+ */
+export async function listAiVideoModels(c: Client, workspaceId: string) {
+  const raw = await c.request<any>(
+    "GET",
+    `/workspaces/${workspaceId}/ai/videos/models`,
+    { unwrap: false },
+  );
+  return Array.isArray(raw?.models) ? raw.models : [];
+}
+
+export interface AiVideoEstimateBody {
+  duration_seconds?: number;
+  model?: string;
+  resolution?: string;
+  generation_mode?: "text-to-video" | "image-to-video" | "reference-to-video";
+  enable_audio?: boolean;
+  aspect_ratio?: string;
+  enhance_prompt?: boolean;
+}
+
+/**
+ * POST /workspaces/{w}/ai/videos/estimate — real credit/time estimate.
+ * Nothing is submitted or charged. Wrapped response → {credits, estimated_seconds}.
+ */
+export function estimateAiVideo(
+  c: Client,
+  workspaceId: string,
+  body: AiVideoEstimateBody = {},
+) {
+  return c.post<any>(`/workspaces/${workspaceId}/ai/videos/estimate`, {
+    json: body,
+  });
+}
+
+export interface AiVideoGenerateBody {
+  prompt: string;
+  image_url?: string;
+  reference_image_urls?: string[];
+  model?: string;
+  duration_seconds?: number;
+  resolution?: string;
+  aspect_ratio?: string;
+  enable_audio?: boolean;
+  enhance_prompt?: boolean;
+  style?: string;
+  use_brand?: boolean;
+}
+
+/**
+ * POST /workspaces/{w}/ai/videos/generate — submit an async video generation
+ * job. Omitting both `image_url` and `reference_image_urls` is text-to-video;
+ * setting one switches to image-to-video / reference-to-video respectively
+ * (the two are mutually exclusive — the backend has no `brand_id` input,
+ * `use_brand` resolves it server-side).
+ */
+export function generateAiVideo(
+  c: Client,
+  workspaceId: string,
+  body: AiVideoGenerateBody,
+) {
+  if (body.image_url && body.reference_image_urls?.length) {
+    throw new ConfigError(
+      "`image_url` and `reference_image_urls` are mutually exclusive — " +
+        "pass at most one (they select image-to-video vs reference-to-video).",
+    );
+  }
+  return c.post<any>(`/workspaces/${workspaceId}/ai/videos/generate`, {
+    json: body,
+  });
+}
+
+/**
+ * POST /workspaces/{w}/ai/videos/tools/{tool_key} — invoke a dedicated video
+ * tool (`motion-control`, `lip-sync`, `talking-avatar`). No upfront estimate;
+ * the response carries `estimated_credits: null, estimated_seconds: null`.
+ */
+export function runAiVideoTool(
+  c: Client,
+  workspaceId: string,
+  toolKey: string,
+  body: Record<string, unknown>,
+) {
+  return c.post<any>(
+    `/workspaces/${workspaceId}/ai/videos/tools/${seg(toolKey)}`,
+    { json: body },
+  );
+}
+
+/**
+ * GET /workspaces/{w}/ai/jobs — paginated list of video jobs submitted
+ * through this API (never chat/internal-tool jobs).
+ */
+export function listAiVideoJobs(
+  c: Client,
+  workspaceId: string,
+  params: {
+    status?: "queued" | "processing" | "completed" | "failed" | "cancelled";
+    page?: number;
+    per_page?: number;
+  } = {},
+) {
+  return c.getPaginated<any>(`/workspaces/${workspaceId}/ai/jobs`, params);
+}
+
+/** GET /workspaces/{w}/ai/jobs/{job_id} — single job status. */
+export function getAiVideoJob(c: Client, workspaceId: string, jobId: string) {
+  return c.get<any>(`/workspaces/${workspaceId}/ai/jobs/${seg(jobId)}`);
+}
+
+/**
+ * DELETE /workspaces/{w}/ai/jobs/{job_id} — cancel a still-active job. May
+ * charge for partial work already consumed. 409 JOB_ALREADY_TERMINAL when
+ * the job already finished/failed/cancelled.
+ */
+export function cancelAiVideoJob(c: Client, workspaceId: string, jobId: string) {
+  return c.delete<any>(`/workspaces/${workspaceId}/ai/jobs/${seg(jobId)}`);
+}
 
 // Re-export ContentStudioError for convenience in commands.
 export { ContentStudioError };
