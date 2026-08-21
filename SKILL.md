@@ -528,11 +528,13 @@ read: report it as "no matching conversations", not "not found".
 ### Analytics
 
 Read-only performance reports across Facebook, Instagram, YouTube, Pinterest,
-LinkedIn, Google Business Profile, TikTok, and Twitter/X (99 commands total,
-one per backend endpoint — no generic passthrough).
+LinkedIn, Google Business Profile, TikTok, Twitter/X, **Meta Ads** and
+**Google Ads**, plus cross-network Campaigns & Labels reports (133 commands
+total, one per backend endpoint — no generic passthrough).
 
-Almost every command needs `--platform-id` (the connected account, from
-`accounts:list`) plus either a date range or a native post id:
+Most commands need `--platform-id` (the connected account, from
+`accounts:list`) plus either a date range or a native post id. The ads and
+campaign/label families are the exceptions — see below:
 
 - **Date-range reports** — `--start-date` / `--end-date` (`YYYY-MM-DD`,
   both required). Optional on most: `--timezone` (IANA name, default UTC),
@@ -544,14 +546,28 @@ Almost every command needs `--platform-id` (the connected account, from
   `*-single-video`) — `--platform-id` + `--post-id` (the platform-native id,
   not a ContentStudio internal id). No date range.
 - **AI insights** commands (`*-ai-insights`) additionally take `--type`
-  (insight key) and `--language` (ISO 639-1, default `en`).
+  (`aiInsightsSummary` for the compact card, `aiInsightsDetailed` for the full
+  report) and `--language` (ISO 639-1, default `en`). Both ads platforms have
+  one too.
+- **Ads reports** (`analytics:meta-ads-*`, `analytics:google-ads-*`) take
+  `--account-id` — an *ad* account (`act_…` on Meta, a customer id on Google,
+  from `analytics:meta-ads-accounts` / `analytics:google-ads-accounts`) — not
+  `--platform-id`. Table commands add `--limit`/`--offset`, `--search`,
+  `--order-by`/`--order-dir` and id filters (`--campaign-id`, `--ad-set-id`,
+  `--ad-group-id`); chart commands add `--metric` and `--level`.
+  `analytics:*-ads-accounts` needs no account at all — it is how you find one.
+- **Campaigns & Labels** (`analytics:campaigns-labels-*`) are the only POST
+  reports: the filters are lists, so repeat the flag —
+  `--campaigns <id> --campaigns <id>`, `--labels <id>`, and one account list
+  per network (`--facebook-accounts`, `--instagram-accounts`, …). Only
+  `--start-date`/`--end-date` are required.
 
 Run `contentstudio analytics:<command> --help` to see the exact options for
 any one command — required vs. optional and enum choices differ per endpoint.
 
-All analytics commands are GET requests with no side effects, so none of them
-take `--dry-run` (that flag only exists on mutating commands elsewhere in
-this CLI).
+Every analytics command is read-only — the campaign/label ones are POSTs only
+because their filters are arrays — so none of them take `--dry-run` (that flag
+only exists on mutating commands elsewhere in this CLI).
 
 **If a command returns `ANALYTICS_UPSTREAM_ERROR`** (HTTP 200 with
 `status: false`, often `upstream_status: 401`), that is the ContentStudio
@@ -600,7 +616,7 @@ is wrong.
 | `analytics:instagram-summary` | Instagram summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
 | `analytics:instagram-top-posts` | Instagram top-performing posts | --platform-id, --start-date, --end-date |
 
-**YouTube (19)**
+**YouTube (20)**
 
 | Command | Purpose | Required |
 |---------|---------|----------|
@@ -611,6 +627,7 @@ is wrong.
 | `analytics:youtube-find-video` | YouTube traffic source breakdown (how viewers found videos) | --platform-id, --start-date, --end-date |
 | `analytics:youtube-least-posts` | YouTube least-performing videos ordered by views and engagement | --platform-id, --start-date, --end-date |
 | `analytics:youtube-performance-schedule` | YouTube video performance metrics grouped by publish date | --platform-id, --start-date, --end-date |
+| `analytics:youtube-publishing-behaviour` | YouTube posts published over time and content-type breakdown | --platform-id, --start-date, --end-date |
 | `analytics:youtube-single-video` | Get a single YouTube video by ID | --platform-id, --post-id |
 | `analytics:youtube-sorted-top-posts` | YouTube videos sorted by a configurable metric | --platform-id, --start-date, --end-date |
 | `analytics:youtube-subscriber-trend` | YouTube cumulative subscriber trend over time | --platform-id, --start-date, --end-date |
@@ -698,6 +715,54 @@ is wrong.
 | `analytics:twitter-single-tweet` | Get a single Twitter/X tweet by ID | --platform-id, --post-id |
 | `analytics:twitter-summary` | Twitter summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
 | `analytics:twitter-top-tweets` | Twitter top-performing tweets | --platform-id, --start-date, --end-date |
+
+**Meta Ads (11)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:meta-ads-accounts` | List connected Meta ad accounts | — |
+| `analytics:meta-ads-ad-sets` | Ad sets with per-ad-set metrics | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-ads` | Ads with per-ad metrics and creative details | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-ai-insights` | AI-generated insights for an ad account | --account-id, --start-date, --end-date, --type |
+| `analytics:meta-ads-campaigns` | Campaigns with per-campaign metrics | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-demographics` | Audience breakdown by age and gender, region or country | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-performance-by-level` | One metric broken down by campaign, ad set or ad | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-performance-by-placement` | One metric broken down by publisher platform and placement | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-performance-over-time` | Daily time series for one or more metrics | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-results-by-objective` | Results and spend grouped by campaign objective | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-summary` | Meta Ads headline KPIs — current vs previous period | --account-id, --start-date, --end-date |
+
+**Google Ads (17)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:google-ads-accounts` | List connected Google Ads accounts | — |
+| `analytics:google-ads-ad-groups` | Ad groups with per-ad-group metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-ads` | Ads with per-ad metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-ai-insights` | AI-generated insights for an ad account | --account-id, --start-date, --end-date, --type |
+| `analytics:google-ads-campaigns` | Campaigns with per-campaign metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-conversion-actions` | Conversion actions configured on the account | --account-id, --start-date, --end-date |
+| `analytics:google-ads-conversion-funnel` | Conversion funnel — impressions through to conversions | --account-id, --start-date, --end-date |
+| `analytics:google-ads-conversions-by-action` | Conversions grouped by conversion action | --account-id, --start-date, --end-date |
+| `analytics:google-ads-conversions-over-time` | Conversions over time | --account-id, --start-date, --end-date |
+| `analytics:google-ads-demographics` | Audience breakdown by age, gender and location | --account-id, --start-date, --end-date |
+| `analytics:google-ads-keywords` | Keywords with per-keyword metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-performance-by-level` | One metric broken down by campaign, ad group or ad | --account-id, --start-date, --end-date |
+| `analytics:google-ads-performance-by-type` | One metric broken down by campaign type | --account-id, --start-date, --end-date |
+| `analytics:google-ads-performance-over-time` | Daily time series for one or more metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-search-terms` | Search terms with per-term metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-shopping` | Shopping campaign product performance | --account-id, --start-date, --end-date |
+| `analytics:google-ads-summary` | Google Ads headline KPIs — current vs previous period | --account-id, --start-date, --end-date |
+
+**Campaigns & Labels (5)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:campaigns-labels-breakdown` | Per-campaign and per-label totals, current vs previous period | --start-date, --end-date |
+| `analytics:campaigns-labels-insights-breakdown` | Daily time series per campaign and per label | --start-date, --end-date |
+| `analytics:campaigns-labels-posts` | Per-post table for the selected campaigns & labels | --start-date, --end-date |
+| `analytics:campaigns-labels-summary` | Campaign & label summary KPIs — current vs previous period | --start-date, --end-date |
+| `analytics:campaigns-labels-top-posts` | Top 5 posts per network for the selected campaigns & labels | --start-date, --end-date |
 
 ---
 
