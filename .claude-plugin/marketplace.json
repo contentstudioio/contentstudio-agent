@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "ContentStudio social-media automation skill — scheduling and social inbox across 10+ platforms",
-    "version": "1.1.1"
+    "version": "1.2.0"
   },
   "plugins": [
     {

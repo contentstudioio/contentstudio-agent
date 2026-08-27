@@ -22,6 +22,7 @@ import { registerInbox } from "./commands/inbox";
 import { registerLookups } from "./commands/lookups";
 import { registerMedia } from "./commands/media";
 import { registerPosts } from "./commands/posts";
+import { registerScheduling } from "./commands/scheduling";
 import { registerWorkspaces } from "./commands/workspaces";
 import { maybeNotifyUpdate } from "./updateCheck";
 
@@ -62,6 +63,7 @@ cli = registerConnect(cli);
 cli = registerFacebook(cli);
 cli = registerMedia(cli);
 cli = registerPosts(cli);
+cli = registerScheduling(cli);
 cli = registerComments(cli);
 cli = registerInbox(cli);
 

@@ -39,6 +39,7 @@ import {
   listInboxNotes,
   listInboxPostComments,
   listInboxTags,
+  schedulingOptimalTimes,
   searchInboxElements,
 } from "../src/api";
 import { Config } from "../src/config";
@@ -346,5 +347,55 @@ describeIfCreds("Social Inbox E2E (read-only)", () => {
       limit: 5,
     });
     expect(Array.isArray(comments.data)).toBe(true);
+  });
+});
+
+describeIfCreds("Scheduling E2E (read-only)", () => {
+  it("optimal-times returns meta/global/individual in the workspace timezone", async () => {
+    const res = await schedulingOptimalTimes(mkClient(), WORKSPACE_ID!, {
+      global_slots: 3,
+    });
+    // meta is always present, even for a workspace with too little history.
+    expect(res.meta).toBeTypeOf("object");
+    expect(typeof res.meta.timezone).toBe("string");
+    expect(res.individual).toBeTypeOf("object");
+
+    // `global` is null when no account had usable data — a valid 200.
+    if (res.global) {
+      const recs = res.global.top_recommendations ?? [];
+      expect(Array.isArray(recs)).toBe(true);
+      expect(recs.length).toBeLessThanOrEqual(3);
+      if (recs.length) {
+        // Guards the column mapping used by `scheduling:best-times`.
+        const r = recs[0];
+        expect(r).toHaveProperty("rank");
+        expect(r).toHaveProperty("day");
+        expect(r).toHaveProperty("score");
+        // The hour comes back as a bare string, e.g. "14".
+        expect(String(r.time)).toMatch(/^\d{1,2}$/);
+      }
+    }
+  });
+
+  it("--json scheduling:best-times returns ok=true", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "cs-cli-e2e-sched-"));
+    try {
+      if (!fs.existsSync(CLI)) {
+        throw new Error("dist/index.js missing — run 'npm run build' first.");
+      }
+      const r = runCLI(["--json", "scheduling:best-times", "--global-slots", "1"], {
+        CONTENTSTUDIO_CONFIG_PATH: path.join(tmp, "config.json"),
+        CONTENTSTUDIO_API_KEY: API_KEY!,
+        CONTENTSTUDIO_WORKSPACE_ID: WORKSPACE_ID!,
+        CONTENTSTUDIO_BASE_URL: BASE_URL,
+      });
+      expect(r.code).toBe(0);
+      const d = JSON.parse(r.stdout);
+      expect(d.ok).toBe(true);
+      expect(d.data).toHaveProperty("meta");
+      expect(d.data).toHaveProperty("individual");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });

@@ -760,3 +760,87 @@ describe("inbox --dry-run paths never hit the network", () => {
     expect(r.code).not.toBe(0);
   });
 });
+
+describe("scheduling:best-times validates before touching the network", () => {
+  function withCfg() {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({ api_key: "cs_INVALID", active_workspace_id: "ws-bogus" }),
+    );
+    return { CONTENTSTUDIO_CONFIG_PATH: cfgFile };
+  }
+
+  it("is listed in --help", () => {
+    const r = run(["--help"], { CONTENTSTUDIO_CONFIG_PATH: cfgFile });
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("scheduling:best-times");
+  });
+
+  it("rejects an --account without a <platform>: prefix", () => {
+    const r = run(
+      ["--json", "scheduling:best-times", "--account", "acc-1"],
+      withCfg(),
+    );
+    expect(r.code).not.toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.ok).toBe(false);
+    expect(d.error.type).toBe("ConfigError");
+    expect(d.error.message).toContain("<platform>:<account_id>");
+  });
+
+  it("rejects an unsupported platform", () => {
+    const r = run(
+      ["--json", "scheduling:best-times", "--account", "myspace:acc-1"],
+      withCfg(),
+    );
+    expect(r.code).not.toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.error.type).toBe("ConfigError");
+    expect(d.error.message).toContain("myspace");
+  });
+
+  it("rejects --account combined with --entities", () => {
+    const r = run(
+      [
+        "--json",
+        "scheduling:best-times",
+        "--account",
+        "facebook:acc-1",
+        "--entities",
+        '[{"id":"acc-1","type":"facebook"}]',
+      ],
+      withCfg(),
+    );
+    expect(r.code).not.toBe(0);
+    expect(JSON.parse(r.stdout).error.type).toBe("ConfigError");
+  });
+
+  it("rejects --entities that is not a JSON array of {id, type}", () => {
+    const bad = run(
+      ["--json", "scheduling:best-times", "--entities", '{"id":"acc-1"}'],
+      withCfg(),
+    );
+    expect(bad.code).not.toBe(0);
+    expect(JSON.parse(bad.stdout).error.message).toContain("must be an array");
+
+    const missing = run(
+      ["--json", "scheduling:best-times", "--entities", '[{"id":"acc-1"}]'],
+      withCfg(),
+    );
+    expect(missing.code).not.toBe(0);
+    expect(JSON.parse(missing.stdout).error.message).toContain('"type"');
+  });
+
+  it("rejects out-of-range slot counts", () => {
+    for (const args of [
+      ["--global-slots", "25"],
+      ["--per-account-slots", "0"],
+    ]) {
+      const r = run(["--json", "scheduling:best-times", ...args], withCfg());
+      expect(r.code).not.toBe(0);
+      const d = JSON.parse(r.stdout);
+      expect(d.error.type).toBe("ConfigError");
+      expect(d.error.message).toContain("1 and 24");
+    }
+  });
+});

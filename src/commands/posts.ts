@@ -234,7 +234,8 @@ function applyPostBodyOptions<T>(y: Argv<T>): Argv<T> {
     .option("scheduled-at", {
       alias: "s",
       type: "string",
-      describe: "Shortcut: scheduling.scheduled_at (YYYY-MM-DD HH:MM:SS, UTC).",
+      describe:
+        "Shortcut: scheduling.scheduled_at (YYYY-MM-DD HH:MM:SS). The API reads it as workspace-local wall-clock time, so `scheduling:best-times` slots can be passed straight through.",
     })
     .option("image-url", {
       alias: "m",
@@ -630,9 +631,16 @@ function parseJsonFlag(
 }
 
 /**
- * Normalize a date string to the backend's `Y-m-d H:i:s` format (UTC).
+ * Normalize a date string to the backend's `Y-m-d H:i:s` format.
  * Already-correct input is returned as-is; unparseable input is passed
  * through so the backend can validate. Ported from the MCP create_post tool.
+ *
+ * Note the two paths differ: a canonical `Y-m-d H:i:s` string is forwarded
+ * verbatim, while anything else is rendered from its UTC fields. The backend
+ * then interprets whatever it receives as *workspace-local* wall-clock time,
+ * so passing an instant-bearing value (e.g. an ISO string ending in `Z`)
+ * schedules at that clock reading in the workspace timezone, not at that
+ * instant. `scheduling:best-times` already returns workspace-local slots.
  */
 function formatToYmdHis(input?: string): string | undefined {
   if (!input) return undefined;
