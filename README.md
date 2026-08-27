@@ -719,7 +719,7 @@ The response includes an `_id` you can pass as `--media-id` when creating posts.
 
 ## Analytics
 
-Read-only performance reports across Facebook, Instagram, YouTube, Pinterest, LinkedIn, Google Business Profile, TikTok, and Twitter/X — 99 commands under the `analytics:` namespace, one per backend endpoint. Full per-platform command reference lives in [SKILL.md](./SKILL.md#analytics).
+Read-only performance reports across Facebook, Instagram, YouTube, Pinterest, LinkedIn, Google Business Profile, TikTok, Twitter/X, Meta Ads and Google Ads, plus cross-network Campaigns & Labels reports — 133 commands under the `analytics:` namespace, one per backend endpoint. Full per-platform command reference lives in [SKILL.md](./SKILL.md#analytics).
 
 ```bash
 # Date-range report — most commands take --platform-id + --start-date/--end-date
@@ -1177,9 +1177,11 @@ contentstudio --json media:list [--type images|videos] [--sort recent]          
 contentstudio --json media:upload --file <path>                                    # Upload local file
 contentstudio --json media:upload --url <url>                                      # Import from URL
 
-# Analytics (99 commands — one per endpoint; see SKILL.md#analytics for the full list)
+# Analytics (133 commands — one per endpoint; see SKILL.md#analytics for the full list)
 contentstudio --json analytics:<platform>-<report> --platform-id <id> --start-date <d> --end-date <d>
 contentstudio --json analytics:<platform>-single-post --platform-id <id> --post-id <native_id>
+contentstudio --json analytics:meta-ads-summary --account-id <act_id> --start-date <d> --end-date <d>
+contentstudio --json analytics:google-ads-ai-insights --account-id <id> --start-date <d> --end-date <d> --type aiInsightsDetailed
 contentstudio analytics:<platform>-<report> --help                                 # Exact options per command
 
 # Globals

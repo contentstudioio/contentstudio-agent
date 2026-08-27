@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — Ads analytics support
+
+34 more commands under the `analytics:` namespace, tracking the public API's ads
+surface (added after the analytics work below):
+
+- **Meta Ads (11)** and **Google Ads (17)** — summary, performance over time /
+  by level / by placement / by type, campaigns, ad sets, ad groups, ads,
+  keywords, search terms, shopping, the four Google conversion reports,
+  demographics, ad-account listing, and `ai-insights` on both. These take
+  `--account-id` (an ad account) rather than `--platform-id`.
+- **Campaigns & Labels (5)** — summary, breakdown, insights-breakdown, posts and
+  top-posts. The only POST analytics commands: their filters are lists, so
+  `--campaigns`, `--labels` and the per-network `--*-accounts` flags repeat.
+- **YouTube publishing-behaviour** — the one social endpoint added since.
+
+`analytics:*-accounts` is how you find an ad account id; every other ads command
+needs one. Still read-only, still one command per endpoint.
+
 ## Unreleased — Analytics support
 
 99 new commands under the `analytics:` namespace, one per ContentStudio
