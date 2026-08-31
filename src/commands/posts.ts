@@ -54,7 +54,7 @@ export function registerPosts<T>(yargs: Argv<T>): Argv<T> {
             out.table(
               ["ID", "Status", "Scheduled", "Text"],
               items.map((p) => [
-                String(p._id ?? p.id ?? "-"),
+                String(p.id ?? p._id ?? "-"),
                 p.status ?? "-",
                 p.scheduled_at ?? p.publish_time ?? "-",
                 shortText(p),
@@ -66,7 +66,7 @@ export function registerPosts<T>(yargs: Argv<T>): Argv<T> {
     )
     .command(
       "posts:create",
-      "Create a post. Either --body <file.json> or shortcut flags --content/--account/--publish-type (plus --facebook-carousel / --threads / --twitter / --linkedin-options JSON blobs).",
+      "Create a post. Either --body <file.json> or shortcut flags --content/--account/--publish-type (plus --facebook-carousel / --threads / --twitter / --linkedin-options / --platform-overrides JSON blobs, and --instagram-trial-reel).",
       (y) => applyPostBodyOptions(y),
       run(async (argv: any, g) => {
         const { cfg, client } = buildClient(g);
@@ -319,7 +319,24 @@ function applyPostBodyOptions<T>(y: Argv<T>): Argv<T> {
       type: "string",
       array: true,
       describe:
-        "Instagram collaborator user ID (repeatable, max 3) → instagram_options.collaborators.",
+        "Instagram collaborator user ID (repeatable, max 3) → instagram_options.collaborators. Rejected (422) together with --instagram-trial-reel.",
+    })
+    .option("instagram-trial-reel", {
+      type: "boolean",
+      default: false,
+      describe:
+        "Publish as an Instagram trial reel — shown to non-followers first, so it does not appear on the profile grid or in follower feeds. Requires --post-type reel exactly, plus a video. Rejected (422) together with --instagram-collaborator; share-to-story is silently dropped when combined. Not available when the workspace posts to Instagram via the mobile app. → instagram_options.trial_reel.enabled.",
+    })
+    .option("instagram-trial-reel-graduation", {
+      type: "string",
+      choices: ["SS_PERFORMANCE", "MANUAL"],
+      describe:
+        "How the trial reel graduates to followers (default SS_PERFORMANCE): SS_PERFORMANCE auto-graduates it if it performs well; MANUAL requires graduating it by hand in the Instagram app (no API for that). Only meaningful with --instagram-trial-reel. → instagram_options.trial_reel.graduation_strategy.",
+    })
+    .option("platform-overrides", {
+      type: "string",
+      describe:
+        'Per-platform content overrides as a JSON object keyed by platform: facebook, instagram, twitter, linkedin, pinterest, youtube, tiktok, gmb, tumblr, threads, bluesky, telegram. Each value is {"content":{"text"?,"post_type"?,"media"?:{"images"?,"video"?}}}. `text` and `post_type` each merge independently with the common content — an override with only `media` still inherits the common text/post_type. `media` is atomic: including a `media` key at all (even partial) replaces that platform\'s media entirely, with NO fallback to the common media for the half it omits; omitting `media` inherits the common media wholesale. Omit --platform-overrides entirely to publish the same content to every platform. → platform_overrides',
     })
     .option("threads", {
       type: "string",
@@ -393,6 +410,22 @@ function buildPostBodyFromArgv(argv: any): Record<string, unknown> {
     ? (parseJsonFlag(String(twitterRaw), "--twitter", "array") as unknown[])
     : undefined;
 
+  const platformOverridesRaw =
+    argv["platform-overrides"] ?? argv.platformOverrides;
+  const platformOverrides = platformOverridesRaw
+    ? (parseJsonFlag(
+        String(platformOverridesRaw),
+        "--platform-overrides",
+        "object",
+      ) as Record<string, unknown>)
+    : undefined;
+
+  const instagramTrialReelEnabled = !!(
+    argv["instagram-trial-reel"] ?? argv.instagramTrialReel
+  );
+  const instagramTrialReelGraduation =
+    argv["instagram-trial-reel-graduation"] ?? argv.instagramTrialReelGraduation;
+
   const firstComment = argv["first-comment"] ?? argv.firstComment;
   const firstCommentAccounts = (argv["first-comment-account"] ??
     argv.firstCommentAccount) as string[] | undefined;
@@ -435,6 +468,15 @@ function buildPostBodyFromArgv(argv: any): Record<string, unknown> {
     );
   }
 
+  // The backend rejects (422) an Instagram trial reel combined with collaborators.
+  const instagramCollaboratorsArg = (argv["instagram-collaborator"] ??
+    argv.instagramCollaborator) as string[] | undefined;
+  if (instagramTrialReelEnabled && instagramCollaboratorsArg?.length) {
+    throw new ConfigError(
+      "--instagram-trial-reel and --instagram-collaborator are mutually exclusive — the backend rejects the combination.",
+    );
+  }
+
   return buildSimplePostBody({
     text: String(argv.content),
     accounts,
@@ -465,6 +507,11 @@ function buildPostBodyFromArgv(argv: any): Record<string, unknown> {
       argv.facebookCollaborator) as string[] | undefined,
     instagramCollaborators: (argv["instagram-collaborator"] ??
       argv.instagramCollaborator) as string[] | undefined,
+    instagramTrialReelEnabled,
+    instagramTrialReelGraduation: instagramTrialReelGraduation
+      ? String(instagramTrialReelGraduation)
+      : undefined,
+    platformOverrides,
     multiThreads,
     threadedTweets,
     firstComment: firstComment ? String(firstComment) : undefined,
@@ -635,6 +682,9 @@ function buildSimplePostBody(opts: {
   facebookCarousel?: Record<string, unknown>;
   facebookCollaborators?: string[];
   instagramCollaborators?: string[];
+  instagramTrialReelEnabled?: boolean;
+  instagramTrialReelGraduation?: string;
+  platformOverrides?: Record<string, unknown>;
   multiThreads?: unknown[];
   threadedTweets?: unknown[];
   firstComment?: string;
@@ -711,8 +761,27 @@ function buildSimplePostBody(opts: {
     body.facebook_options = facebookOptions;
   }
 
+  // Instagram options can carry collaborators and/or a trial-reel config.
+  // The backend rejects the two together (422) — guarded upstream.
+  const instagramOptions: Record<string, unknown> = {};
   if (opts.instagramCollaborators?.length) {
-    body.instagram_options = { collaborators: opts.instagramCollaborators };
+    instagramOptions.collaborators = opts.instagramCollaborators;
+  }
+  if (opts.instagramTrialReelEnabled) {
+    instagramOptions.trial_reel = {
+      enabled: true,
+      graduation_strategy: opts.instagramTrialReelGraduation || "SS_PERFORMANCE",
+    };
+  }
+  if (Object.keys(instagramOptions).length) {
+    body.instagram_options = instagramOptions;
+  }
+
+  // Per-platform overrides — passed through as-is; merge semantics (text/
+  // post_type merge independently, media is atomic) are enforced by the
+  // backend, not the CLI.
+  if (opts.platformOverrides) {
+    body.platform_overrides = opts.platformOverrides;
   }
 
   if (opts.multiThreads) {

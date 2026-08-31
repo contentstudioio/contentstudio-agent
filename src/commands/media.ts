@@ -37,7 +37,7 @@ export function registerMedia<T>(yargs: Argv<T>): Argv<T> {
             out.table(
               ["ID", "Type", "Name", "Size"],
               items.map((m) => [
-                String(m._id ?? "-"),
+                String(m.id ?? m._id ?? "-"),
                 m.mime_type ?? m.type ?? "-",
                 m.name ?? m.filename ?? "-",
                 String(m.size ?? m.file_size ?? "-"),
@@ -93,7 +93,10 @@ export function registerMedia<T>(yargs: Argv<T>): Argv<T> {
         });
         out.emitSuccess(data, g, (d: any) => {
           out.success("Uploaded.");
-          out.status("ID", String(d?._id ?? d?.data?._id ?? "-"));
+          out.status(
+            "ID",
+            String(d?.id ?? d?._id ?? d?.data?.id ?? d?.data?._id ?? "-"),
+          );
         });
       }),
     );

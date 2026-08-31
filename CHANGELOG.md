@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — Instagram trial reels, per-platform overrides, `id` field rename, `platform_overrides` rename
+
+- `posts:create` / `posts:update`: added `--instagram-trial-reel` (boolean) and
+  `--instagram-trial-reel-graduation SS_PERFORMANCE|MANUAL` →
+  `instagram_options.trial_reel.{enabled,graduation_strategy}`. Publishes an
+  Instagram trial reel (shown to non-followers first). Requires
+  `--post-type reel` exactly plus a video; rejected (422) together with
+  `--instagram-collaborator` — the CLI now guards this locally as well.
+- `posts:create` / `posts:update`: added `--platform-overrides '<json>'` →
+  top-level `platform_overrides`, a per-platform content-override object
+  (`text`/`post_type` merge independently with the common content; `media`
+  is all-or-nothing per platform). Field was renamed from `overrides` to
+  `platform_overrides` to match a pre-release backend contract fix — no
+  compatibility shim needed since neither side has shipped yet.
+- **Breaking (mirrors a backend Public API v1 change):** all Public API v1
+  responses now return the primary identifier as `id` instead of `_id`
+  (accounts, media, workspaces, team members, campaigns, approval workflows,
+  labels, comments, content categories, posts and their nested
+  `labels[]`/`folder`/`accounts[]`). `member_id` on team members is unaffected
+  — it remains a distinct field. CLI output formatting and docs now read
+  `id` first, falling back to `_id` for compatibility with any cached/older
+  responses.
+
 ## 1.2.0 — Best time to post
 
 ### `scheduling:best-times`

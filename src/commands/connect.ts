@@ -181,7 +181,8 @@ export function registerConnect<T>(yargs: Argv<T>): Argv<T> {
         );
         out.emitSuccess(data, g, (d: any) => {
           out.success(`Bluesky account connected: ${handle}`);
-          if (d?._id) out.status("Account ID", String(d._id));
+          const acctId = d?.id ?? d?._id;
+          if (acctId) out.status("Account ID", String(acctId));
         });
       }),
     )
@@ -225,7 +226,8 @@ export function registerConnect<T>(yargs: Argv<T>): Argv<T> {
         const data: any = await addFacebookGroup(client, wid, name, image);
         out.emitSuccess(data, g, (d: any) => {
           out.success(`Facebook Group added: ${name}`);
-          if (d?._id) out.status("Account ID", String(d._id));
+          const acctId = d?.id ?? d?._id;
+          if (acctId) out.status("Account ID", String(acctId));
         });
       }),
     );
