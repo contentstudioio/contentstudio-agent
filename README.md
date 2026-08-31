@@ -142,7 +142,7 @@ contentstudio --json campaigns:list
 contentstudio --json categories:list
 contentstudio --json labels:list
 contentstudio --json team:list
-contentstudio --json approval-workflows:list   # use an item's _id as --approval-workflow-id
+contentstudio --json approval-workflows:list   # use an item's id as --approval-workflow-id
 ```
 
 All support `--page` and `--per-page`; the campaigns/categories/labels/team lists also support `--search`.
@@ -204,7 +204,7 @@ contentstudio --json accounts:remove <account_id> --dry-run
 contentstudio --json accounts:remove <account_id>
 ```
 
-`account_id` is the account's `_id` from `accounts:list`. Requires the `save_social` permission (403 otherwise); 404 if the account isn't in the workspace.
+`account_id` is the account's `id` from `accounts:list`. Requires the `save_social` permission (403 otherwise); 404 if the account isn't in the workspace.
 
 All three connect commands support `--dry-run` to preview the payload without calling the API.
 
@@ -331,6 +331,23 @@ contentstudio --json posts:create --dry-run \
 
 The top-level `-c / --content` is the lead tweet; each `--twitter` item is a follow-up tweet in the chain, in order (don't repeat the lead text in the items). The CLI parses the JSON array locally and sets `has_threaded_tweets: true`. Each item needs `message` or `media`. Unlike Threads, Twitter does **not** allow mixed media in one tweet (no images + video together) and allows **max 1 video per tweet** — the backend enforces this and returns a 422 if violated.
 
+### Per-platform content overrides (`--platform-overrides`)
+
+Publish the same post to several platforms but swap the caption, post type, or media for one of them:
+
+```bash
+contentstudio --json posts:create --dry-run \
+  -c "Common caption" \
+  -i <facebook_id> -i <tiktok_id> \
+  -t draft \
+  -m https://example.com/common.jpg \
+  --platform-overrides '{"tiktok":{"content":{"media":{"video":"https://example.com/clip.mp4"}}}}'
+```
+
+TikTok publishes with the *common* text (`"Common caption"`, inherited — the override didn't touch `text`) and its *own* video, with **no images at all** — because the override's `content` includes a `media` key, TikTok's media is defined entirely by the override (no per-field fallback to the common image). Facebook, which has no override entry, publishes the common text and image unchanged.
+
+Keyed platforms: `facebook`, `instagram`, `twitter`, `linkedin`, `pinterest`, `youtube`, `tiktok`, `gmb`, `tumblr`, `threads`, `bluesky`, `telegram`. Each value is `{"content":{"text"?,"post_type"?,"media"?:{"images"?,"video"?}}}`. `text` and `post_type` merge independently with the common `content` (an override can set one without the other); `media` is all-or-nothing per platform. Omit `--platform-overrides` to publish the same `content` everywhere.
+
 ### Post with a first comment
 
 ```bash
@@ -401,6 +418,74 @@ contentstudio --json posts:create --dry-run \
   -c "Test" -i <account_id> -t scheduled -s "2026-05-01 10:00"
 # → {"ok": true, "data": {"dry_run": true, "endpoint": "...", "body": {...}}}
 ```
+
+## Best Time to Post
+
+`scheduling:best-times` analyses the historical performance of the workspace's connected accounts and returns ranked posting **slots** — a weekday and an hour, best-first.
+
+```bash
+# Best times across every connected account
+contentstudio --json scheduling:best-times
+
+# Just this Facebook page, 3 recommendations for it
+contentstudio --json scheduling:best-times \
+  --account facebook:<account_id> --per-account-slots 3
+
+# Several accounts, and a bigger pooled list
+contentstudio --json scheduling:best-times \
+  --account facebook:<account_id> \
+  --account instagram:<account_id> \
+  --global-slots 10
+
+# Per-account slot counts need the full entity array
+contentstudio --json scheduling:best-times \
+  --entities '[{"id":"<account_id>","type":"facebook","slots":5},
+               {"id":"<account_id>","type":"linkedin","slots":2}]'
+```
+
+`--account` takes `<platform>:<account_id>` — both halves come from a single `accounts:list` row (its `platform` and `_id`). Omit it to analyse everything connected. Supported platforms: `facebook`, `instagram`, `linkedin`, `twitter`, `tiktok`, `youtube`, `pinterest`, `threads`, `gmb`, `tumblr`, `bluesky`, `telegram`.
+
+`--global-slots` (API default 5) and `--per-account-slots` (API default 3) are 1–24 and only control how much of the ranking comes back — they never change the analysis, and they don't affect `heatmap_matrix`, which always carries every hour that had signal.
+
+The `--json` payload:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "meta": {
+      "generated_at": "2026-08-17T09:00:00Z",
+      "timezone": "Asia/Karachi",
+      "warnings": [],
+      "missing_entities": [],
+      "ai_fallback_entities": []
+    },
+    "global": {
+      "top_recommendations": [
+        { "rank": 1, "day": "Wednesday", "date": "2026-08-19", "time": "14",
+          "score": 100, "platform_breakdown": { "facebook": 60, "instagram": 40 } }
+      ],
+      "heatmap_matrix": { "data": [[14, 2, 100]] },
+      "dates_key": ["2026-08-19"]
+    },
+    "individual": {
+      "<account_id>": { "platform": "facebook", "source": "data_driven",
+                        "top_recommendations": [] }
+    }
+  }
+}
+```
+
+**Times are always in the workspace timezone** (echoed as `meta.timezone`); there is no timezone parameter. That is the same clock `posts:create --scheduled-at` writes against, so a slot goes in as-is — converting it to UTC first would move the post:
+
+```bash
+# rank 1 above → Wednesday 2026-08-19 at 14:00 workspace-local
+contentstudio --json posts:create \
+  -c "Launch day is here." -i <account_id> -t scheduled \
+  -s "2026-08-19 14:00:00" --dry-run
+```
+
+A workspace with too little history still returns HTTP 200: the accounts that could not be analysed are listed in `meta.missing_entities` and `global` may be `null`. Accounts in `meta.ai_fallback_entities` are estimates rather than measurements. Errors are 422 (unknown accounts, or no connected accounts) and 502 (`BackendError`) when the optimizer is temporarily unavailable.
 
 ## Managing Posts
 
@@ -715,7 +800,7 @@ Preview (no upload):
 contentstudio --json media:upload --url https://example.com/img.jpg --dry-run
 ```
 
-The response includes an `_id` you can pass as `--media-id` when creating posts.
+The response includes an `id` you can pass as `--media-id` when creating posts.
 
 ## Analytics
 
@@ -815,6 +900,19 @@ contentstudio posts:create \
   -s "2026-05-01 10:00:00" \
   --video-url https://example.com/reel.mp4 \
   --post-type reel
+
+# Trial reel — shown to non-followers first, not on the profile grid or
+# follower feeds. Requires --post-type reel exactly, plus a video.
+# Rejected (422) together with --instagram-collaborator.
+contentstudio posts:create \
+  -c "" \
+  -i <instagram_id> \
+  -t scheduled \
+  -s "2026-05-01 10:00:00" \
+  --video-url https://example.com/reel.mp4 \
+  --post-type reel \
+  --instagram-trial-reel \
+  --instagram-trial-reel-graduation SS_PERFORMANCE
 
 # Story
 contentstudio posts:create \
@@ -998,9 +1096,9 @@ done
 TIME="2026-05-01 10:00:00"
 
 # List accounts and pick one per platform
-FB=$(contentstudio --json accounts:list --platform facebook | jq -r '.data[0]._id')
-LI=$(contentstudio --json accounts:list --platform linkedin | jq -r '.data[0]._id')
-TW=$(contentstudio --json accounts:list --platform twitter  | jq -r '.data[0]._id')
+FB=$(contentstudio --json accounts:list --platform facebook | jq -r '.data[0].id')
+LI=$(contentstudio --json accounts:list --platform linkedin | jq -r '.data[0].id')
+TW=$(contentstudio --json accounts:list --platform twitter  | jq -r '.data[0].id')
 
 contentstudio --json posts:create \
   -c "Big launch today 🚀" \
@@ -1017,7 +1115,7 @@ contentstudio --json posts:create \
 CUTOFF=$(date -d '-30 days' '+%Y-%m-%d')
 
 contentstudio --json posts:list --status draft --date-to "$CUTOFF" --per-page 100 \
-  | jq -r '.data[]._id' \
+  | jq -r '.data[].id' \
   | while read id; do
       contentstudio --json posts:delete "$id"
     done
@@ -1032,7 +1130,7 @@ ACCOUNT="<instagram_id>"
 for img in ./photos/*.jpg; do
   # Upload first to get a media library ID
   RESP=$(contentstudio --json media:upload --file "$img")
-  MEDIA_ID=$(echo "$RESP" | jq -r '.data._id')
+  MEDIA_ID=$(echo "$RESP" | jq -r '.data.id')
 
   # Schedule a post with the uploaded media
   TIME=$(date -d "+1 hour" '+%F %T')
@@ -1053,7 +1151,7 @@ done
 TRUSTED_USER_ID="<user_id>"
 
 contentstudio --json posts:list --status pending_approval --per-page 50 \
-  | jq -r --arg u "$TRUSTED_USER_ID" '.data[] | select(.created_by == $u) | ._id' \
+  | jq -r --arg u "$TRUSTED_USER_ID" '.data[] | select(.created_by == $u) | .id' \
   | while read id; do
       contentstudio --json posts:approve "$id" --comment "auto-approved (trusted creator)"
     done
@@ -1061,7 +1159,7 @@ contentstudio --json posts:list --status pending_approval --per-page 50 \
 
 ## API Endpoints
 
-The CLI wraps these 20 endpoints from the ContentStudio v1 public API. Base URL: `https://api.contentstudio.io/api/v1`.
+The CLI wraps these endpoints from the ContentStudio v1 public API (plus the workspace/label/campaign/team writes and the `inbox:*` surface documented above). Base URL: `https://api.contentstudio.io/api/v1`.
 
 | Method | Endpoint | CLI command |
 |--------|----------|-------------|
@@ -1084,6 +1182,7 @@ The CLI wraps these 20 endpoints from the ContentStudio v1 public API. Base URL:
 | POST   | `/workspaces/{w}/posts` | `posts:create` |
 | DELETE | `/workspaces/{w}/posts/{p}` | `posts:delete` |
 | POST   | `/workspaces/{w}/posts/{p}/approval` | `posts:approve`, `posts:reject` |
+| POST   | `/workspaces/{w}/scheduling/optimal-times` | `scheduling:best-times` |
 | GET    | `/workspaces/{w}/posts/{p}/comments` | `comments:list` |
 | POST   | `/workspaces/{w}/posts/{p}/comments` | `comments:add` |
 
@@ -1167,6 +1266,11 @@ contentstudio --json posts:create [...] --dry-run                               
 contentstudio --json posts:delete <post_id> [--delete-from-social]                 # Delete
 contentstudio --json posts:approve <post_id> [--comment "..."]                     # Approve
 contentstudio --json posts:reject  <post_id> [--comment "..."]                     # Reject
+
+# Best time to post
+contentstudio --json scheduling:best-times                                          # All connected accounts
+contentstudio --json scheduling:best-times --account facebook:<account_id>         # One account
+contentstudio --json scheduling:best-times --global-slots 10                       # More recommendations
 
 # Comments / Notes
 contentstudio --json comments:list <post_id>                                        # List

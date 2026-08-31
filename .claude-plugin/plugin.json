@@ -1,6 +1,6 @@
 {
   "name": "contentstudio",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Social-media automation CLI for scheduling posts and managing the social inbox (DMs, comments, reviews), media, accounts, and approvals across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile via the ContentStudio API.",
   "author": {
     "name": "ContentStudio",

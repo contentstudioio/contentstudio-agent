@@ -433,7 +433,7 @@ export function updatePost(
 
 /**
  * GET /workspaces/{w}/approval-workflows — list the workspace's approval
- * workflows. Each item exposes `_id` (use as `approval_workflow.workflow_id`),
+ * workflows. Each item exposes `id` (use as `approval_workflow.workflow_id`),
  * `name`, `is_default`, and `levels[]`.
  */
 export function listApprovalWorkflows(
@@ -695,7 +695,7 @@ export function removeTeamMember(
 
 // ─────────────────────────────────────────────────────────────────
 // Social accounts — remove (disconnect) a connected account.
-// `accountId` is the account's `_id` from accounts:list.
+// `accountId` is the account's `id` from accounts:list.
 // ─────────────────────────────────────────────────────────────────
 
 /**
@@ -2747,6 +2747,107 @@ export function youtubeAnalyticsPublishingBehaviour(
   return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/publishing-behaviour`, analyticsQuery(params));
 }
 
+
+// ─────────────────────────────────────────────────────────────────
+// Scheduling — optimal posting times ("best time to post").
+// (added in v1.2.0)
+//
+// POST /workspaces/{w}/scheduling/optimal-times analyses the historical
+// performance of the workspace's connected accounts and returns ranked
+// posting slots — a weekday + hour, always in the workspace timezone.
+//
+// The response is NOT the usual {status, message, data} envelope: it is
+// {status, meta, global, individual}. It is normalised here so commands emit
+// the CLI's standard {ok, data} shape like every other command.
+// ─────────────────────────────────────────────────────────────────
+
+/** Platforms accepted as an entity `type` by the optimal-times endpoint. */
+export const OPTIMAL_TIME_PLATFORMS = [
+  "facebook",
+  "instagram",
+  "linkedin",
+  "twitter",
+  "tiktok",
+  "youtube",
+  "pinterest",
+  "threads",
+  "gmb",
+  "tumblr",
+  "bluesky",
+  "telegram",
+] as const;
+
+export type OptimalTimePlatform = (typeof OPTIMAL_TIME_PLATFORMS)[number];
+
+/** A slot count is a whole number of hours in the week: 1–24. */
+export const MIN_OPTIMAL_SLOTS = 1;
+export const MAX_OPTIMAL_SLOTS = 24;
+
+export interface OptimalTimesEntity {
+  /** Account `_id` from GET /workspaces/{w}/accounts. */
+  id: string;
+  type: OptimalTimePlatform | string;
+  /** Per-account override of `per_account_slots`. */
+  slots?: number;
+}
+
+export interface OptimalTimesBody {
+  /** Omit to analyse every account connected to the workspace. */
+  entities?: OptimalTimesEntity[];
+  global_slots?: number;
+  per_account_slots?: number;
+}
+
+export interface OptimalTimesResult {
+  /** `{generated_at, timezone, warnings[], missing_entities[], ai_fallback_entities[]}` */
+  meta: any;
+  /** Pooled view across analysed accounts. Null when no account had data. */
+  global: any;
+  /** Per-account breakdown, keyed by account id. */
+  individual: Record<string, any>;
+}
+
+function assertSlots(v: number | undefined, flag: string): void {
+  if (v === undefined) return;
+  if (!Number.isInteger(v) || v < MIN_OPTIMAL_SLOTS || v > MAX_OPTIMAL_SLOTS) {
+    throw new ConfigError(
+      `${flag} must be a whole number between ${MIN_OPTIMAL_SLOTS} and ` +
+        `${MAX_OPTIMAL_SLOTS} (got ${v}).`,
+    );
+  }
+}
+
+/**
+ * POST /workspaces/{w}/scheduling/optimal-times
+ *
+ * Slot counts are validated client-side so a bad call fails immediately
+ * rather than costing a round-trip. A workspace with too little history
+ * still returns 200 — the accounts it could not analyse come back under
+ * `meta.missing_entities`, so an empty `global` is a successful read.
+ */
+export async function schedulingOptimalTimes(
+  c: Client,
+  workspaceId: string,
+  body: OptimalTimesBody = {},
+): Promise<OptimalTimesResult> {
+  assertSlots(body.global_slots, "--global-slots");
+  assertSlots(body.per_account_slots, "--per-account-slots");
+  for (const e of body.entities ?? []) {
+    assertSlots(e.slots, `slots for account ${e.id}`);
+  }
+  // Response: {status, meta, global, individual}
+  const raw = await c.request<any>(
+    "POST",
+    `/workspaces/${workspaceId}/scheduling/optimal-times`,
+    { json: body, unwrap: false },
+  );
+  return {
+    meta: raw?.meta ?? null,
+    global: raw?.global ?? null,
+    individual:
+      raw?.individual && typeof raw.individual === "object" ? raw.individual : {},
+  };
+}
 
 // Re-export ContentStudioError for convenience in commands.
 export { ContentStudioError };
