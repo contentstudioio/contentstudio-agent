@@ -5,12 +5,16 @@
  * Requires `npm run build` to have been run first (CI does this in a step).
  */
 
-import { execFileSync } from "child_process";
+import { execFile, execFileSync } from "child_process";
 import * as fs from "fs";
+import * as http from "http";
 import * as os from "os";
 import * as path from "path";
+import { promisify } from "util";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+const execFileAsync = promisify(execFile);
 
 const CLI = path.resolve(__dirname, "..", "dist", "index.js");
 
@@ -40,6 +44,39 @@ function run(
   } catch (e: any) {
     return {
       code: e.status ?? 1,
+      stdout: (e.stdout ?? "").toString(),
+      stderr: (e.stderr ?? "").toString(),
+    };
+  }
+}
+
+// Async twin of run(), for the one test that needs the CLI child running
+// concurrently with an in-process stub server. execFileSync (above) blocks
+// this file's event loop for the duration of the child call, so a server
+// living in this same process would never get to handle the incoming
+// request; execFile does not block it. The other 32 tests use the
+// synchronous run() and must keep doing so.
+async function runAsync(
+  args: string[],
+  envOverride: Record<string, string> = {},
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    CONTENTSTUDIO_API_KEY: undefined,
+    CONTENTSTUDIO_WORKSPACE_ID: undefined,
+    CONTENTSTUDIO_BASE_URL: undefined,
+    ...envOverride,
+  };
+  for (const k of Object.keys(env)) if (env[k] === undefined) delete env[k];
+  try {
+    const { stdout } = await execFileAsync("node", [CLI, ...args], {
+      env,
+      encoding: "utf-8",
+    });
+    return { code: 0, stdout, stderr: "" };
+  } catch (e: any) {
+    return {
+      code: e.code ?? 1,
       stdout: (e.stdout ?? "").toString(),
       stderr: (e.stderr ?? "").toString(),
     };
@@ -842,5 +879,64 @@ describe("scheduling:best-times validates before touching the network", () => {
       expect(d.error.type).toBe("ConfigError");
       expect(d.error.message).toContain("1 and 24");
     }
+  });
+});
+describe("media:folders:list against a stub server", () => {
+  // Regression guard for a real bug: the live API returns the folder array
+  // under `folders`, not `data`. tests/api.test.ts only exercises the
+  // src/api.ts wrapper (which passes the body through untouched either way)
+  // and can't catch a renderer that reads the wrong key — only driving the
+  // actual built CLI against a server shaped like the real API can.
+  const FOLDERS_BODY = {
+    status: true,
+    message: "Media folders retrieved successfully.",
+    folders: [
+      {
+        _id: "6a96831a33727ceb930f5402",
+        folder_name: "Q4 Campaign",
+        workspace_id: "ws1",
+        is_root: true,
+        count: 3,
+      },
+    ],
+  };
+
+  async function withStubServer(
+    fn: (baseUrl: string) => Promise<void>,
+  ): Promise<void> {
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(FOLDERS_BODY));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const { port } = server.address() as { port: number };
+      await fn(`http://127.0.0.1:${port}/api/v1`);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }
+
+  it("renders the folder in the human table, and exposes it via --json", async () => {
+    await withStubServer(async (baseUrl) => {
+      fs.writeFileSync(cfgFile, JSON.stringify({ api_key: "cs_dummy" }));
+      const args = ["media:folders:list", "--workspace", "ws1", "--base-url", baseUrl];
+      const env = { CONTENTSTUDIO_CONFIG_PATH: cfgFile };
+
+      const table = await runAsync(args, env);
+      expect(table.code).toBe(0);
+      expect(table.stdout).not.toContain("(no rows)");
+      const row = table.stdout
+        .split("\n")
+        .find((line) => line.includes("Q4 Campaign"));
+      expect(row).toBeDefined();
+      expect(row!.trim().endsWith("3")).toBe(true);
+
+      const json = await runAsync(["--json", ...args], env);
+      expect(json.code).toBe(0);
+      const data = JSON.parse(json.stdout);
+      expect(data.ok).toBe(true);
+      expect(data.data.folders[0].folder_name).toBe("Q4 Campaign");
+    });
   });
 });

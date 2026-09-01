@@ -9,24 +9,35 @@ import {
   addInboxNote,
   addInboxPostComment,
   addTeamMember,
+  archiveMedia,
   attachInboxTags,
   bulkUpdateInboxElements,
+  createMediaFolder,
   deleteInboxComment,
   deleteInboxMessage,
   deleteInboxTags,
+  deleteMedia,
+  deleteMediaFolder,
   detachInboxTag,
   createInboxTag,
+  flagMediaBrandAsset,
   getInboxContact,
+  getMediaStorage,
   inboxSummary,
   listInboxPostComments,
   listInboxTags,
   listInboxMessages,
+  listMediaFolders,
   markInboxElementRead,
+  moveMedia,
+  renameMediaFolder,
   searchInboxElements,
   sendInboxMessage,
   setInboxCommentHidden,
   setInboxMessageBookmark,
+  unflagMediaBrandAsset,
   updateInboxTag,
+  updateMediaNote,
   connectAccount,
   createCampaign,
   createLabel,
@@ -1257,5 +1268,107 @@ describe("Scheduling — optimal posting times", () => {
     await expect(
       schedulingOptimalTimes(mkClient(), "ws-1"),
     ).rejects.toBeInstanceOf(BackendError);
+  });
+});
+describe("Media management wrappers", () => {
+  it("listMediaFolders GETs /workspaces/{w}/media/folders and returns the real `folders` envelope", async () => {
+    // The real API has no top-level `data` key here — the array is under
+    // `folders`, so Client.get()'s unwrap passes the whole body through.
+    const folder = {
+      _id: "6a96831a33727ceb930f5402",
+      folder_name: "Q4 Campaign",
+      workspace_id: "6a9681b3a6b68cb591f30483",
+      created_at: "2026-09-01T07:47:38.345000Z",
+      updated_at: "2026-09-01T07:47:38.345000Z",
+      folder_route_gcs: "media_library/6a9681b3a6b68cb591f30483",
+      created_by: "6a9681b3a6b68cb591f30482",
+      is_root: true,
+      count: 0,
+    };
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/media/folders`)
+      .reply(200, { status: true, message: "ok", folders: [folder] });
+    const result: any = await listMediaFolders(mkClient(), "ws-1");
+    expect(result.folders).toEqual([folder]);
+  });
+
+  it("createMediaFolder POSTs folder_name", async () => {
+    let received: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/media/folders`, (b) => (received = b) && true)
+      .reply(200, envelope({ id: "f1" }));
+    await createMediaFolder(mkClient(), "ws-1", { folder_name: "Q4 Assets" });
+    expect(received.folder_name).toBe("Q4 Assets");
+  });
+
+  it("renameMediaFolder PUTs to the folder id", async () => {
+    nock(BASE)
+      .put(`${PATH}/workspaces/ws-1/media/folders/f1`, { folder_name: "Renamed" })
+      .reply(200, envelope({ id: "f1" }));
+    await expect(
+      renameMediaFolder(mkClient(), "ws-1", "f1", { folder_name: "Renamed" }),
+    ).resolves.toBeDefined();
+  });
+
+  it("deleteMediaFolder DELETEs the folder", async () => {
+    nock(BASE).delete(`${PATH}/workspaces/ws-1/media/folders/f1`).reply(200, envelope([]));
+    await expect(deleteMediaFolder(mkClient(), "ws-1", "f1")).resolves.toBeDefined();
+  });
+
+  it("getMediaStorage GETs /media/storage", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/media/storage`)
+      .reply(200, envelope({ used: 1, limit: 2 }));
+    await expect(getMediaStorage(mkClient(), "ws-1")).resolves.toBeDefined();
+  });
+
+  it("archiveMedia POSTs media_ids + archived", async () => {
+    let received: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/media/archive`, (b) => (received = b) && true)
+      .reply(200, envelope([]));
+    await archiveMedia(mkClient(), "ws-1", { media_ids: ["m1", "m2"], archived: true });
+    expect(received).toEqual({ media_ids: ["m1", "m2"], archived: true });
+  });
+
+  it("moveMedia POSTs media_ids + folder_id", async () => {
+    let received: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/media/move`, (b) => (received = b) && true)
+      .reply(200, envelope([]));
+    await moveMedia(mkClient(), "ws-1", { media_ids: ["m1"], folder_id: "f1" });
+    expect(received).toEqual({ media_ids: ["m1"], folder_id: "f1" });
+  });
+
+  it("updateMediaNote PUTs the note, and null clears it", async () => {
+    nock(BASE)
+      .put(`${PATH}/workspaces/ws-1/media/m1/note`, { note: null })
+      .reply(200, envelope({ id: "m1", note: null }));
+    await expect(
+      updateMediaNote(mkClient(), "ws-1", "m1", { note: null }),
+    ).resolves.toBeDefined();
+  });
+
+  it("flagMediaBrandAsset POSTs to the brand-asset sub-resource", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/media/m1/brand-asset`)
+      .reply(200, envelope({ id: "m1", is_brand_asset: true }));
+    await expect(flagMediaBrandAsset(mkClient(), "ws-1", "m1")).resolves.toBeDefined();
+  });
+
+  it("unflagMediaBrandAsset DELETEs the brand-asset sub-resource", async () => {
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/media/m1/brand-asset`)
+      .reply(200, envelope({ id: "m1", is_brand_asset: false }));
+    await expect(unflagMediaBrandAsset(mkClient(), "ws-1", "m1")).resolves.toBeDefined();
+  });
+
+  it("deleteMedia forwards confirmed only when asked", async () => {
+    let received: any;
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/media/m1`, (b) => (received = b) && true)
+      .reply(200, envelope([]));
+    await deleteMedia(mkClient(), "ws-1", "m1", { confirmed: true });
+    expect(received).toEqual({ confirmed: true });
   });
 });

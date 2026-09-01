@@ -355,6 +355,8 @@ export function listMedia(
     search?: string;
     page?: number;
     per_page?: number;
+    folder_id?: string;
+    archived?: boolean;
   } = {},
 ) {
   return c.getPaginated<any>(`/workspaces/${workspaceId}/media`, params);
@@ -385,6 +387,98 @@ export function uploadMedia(
   }
 
   return c.post<any>(`/workspaces/${workspaceId}/media`, { form });
+}
+
+export function listMediaFolders(c: Client, workspaceId: string) {
+  return c.get<any>(`/workspaces/${workspaceId}/media/folders`);
+}
+
+export function createMediaFolder(
+  c: Client,
+  workspaceId: string,
+  body: { folder_name: string; parent_folder_id?: string },
+) {
+  return c.post<any>(`/workspaces/${workspaceId}/media/folders`, { json: body });
+}
+
+export function renameMediaFolder(
+  c: Client,
+  workspaceId: string,
+  folderId: string,
+  body: { folder_name: string },
+) {
+  return c.put<any>(`/workspaces/${workspaceId}/media/folders/${folderId}`, {
+    json: body,
+  });
+}
+
+export function deleteMediaFolder(c: Client, workspaceId: string, folderId: string) {
+  return c.delete<any>(`/workspaces/${workspaceId}/media/folders/${folderId}`);
+}
+
+export function getMediaStorage(c: Client, workspaceId: string) {
+  return c.get<any>(`/workspaces/${workspaceId}/media/storage`);
+}
+
+export function archiveMedia(
+  c: Client,
+  workspaceId: string,
+  body: { media_ids: string[]; archived: boolean },
+) {
+  return c.post<any>(`/workspaces/${workspaceId}/media/archive`, { json: body });
+}
+
+export function moveMedia(
+  c: Client,
+  workspaceId: string,
+  body: { media_ids: string[]; folder_id?: string | null },
+) {
+  return c.post<any>(`/workspaces/${workspaceId}/media/move`, { json: body });
+}
+
+export function updateMediaNote(
+  c: Client,
+  workspaceId: string,
+  mediaId: string,
+  body: { note: string | null },
+) {
+  return c.put<any>(`/workspaces/${workspaceId}/media/${mediaId}/note`, {
+    json: body,
+  });
+}
+
+export function flagMediaBrandAsset(
+  c: Client,
+  workspaceId: string,
+  mediaId: string,
+  body: { profile_id?: string } = {},
+) {
+  return c.post<any>(`/workspaces/${workspaceId}/media/${mediaId}/brand-asset`, {
+    json: body,
+  });
+}
+
+export function unflagMediaBrandAsset(
+  c: Client,
+  workspaceId: string,
+  mediaId: string,
+) {
+  return c.delete<any>(`/workspaces/${workspaceId}/media/${mediaId}/brand-asset`);
+}
+
+// `confirmed` is the backend's own override: DELETE refuses with
+// REQUIRES_DELETE_CONFIRMATION when the media backs scheduled posts. Sending it
+// unconditionally would skip that report, so it is forwarded only when asked.
+export function deleteMedia(
+  c: Client,
+  workspaceId: string,
+  mediaId: string,
+  opts: { confirmed?: boolean } = {},
+) {
+  return c.delete<any>(
+    `/workspaces/${workspaceId}/media/${mediaId}`,
+    opts.confirmed ? { confirmed: true } : undefined,
+  );
 }
 
 export function listPosts(
