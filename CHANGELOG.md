@@ -1,7 +1,13 @@
 # Changelog
 
-## Unreleased — Instagram trial reels, per-platform overrides, `id` field rename, `platform_overrides` rename
+## Unreleased — Instagram trial reels, per-platform overrides, `id` field rename, `platform_overrides` rename, media management commands
 
+- Added 10 media-management commands (additive, no breaking changes):
+  `media:folders:list`, `media:folders:create`, `media:folders:rename`,
+  `media:folders:delete` (irreversible — requires `--yes`), `media:storage`,
+  `media:archive` (reversible — the safe way to clean up media), `media:move`,
+  `media:note`, `media:brand-asset`, and `media:delete` (permanent —
+  requires `--yes`; prefer `media:archive`).
 - `posts:create` / `posts:update`: added `--instagram-trial-reel` (boolean) and
   `--instagram-trial-reel-graduation SS_PERFORMANCE|MANUAL` →
   `instagram_options.trial_reel.{enabled,graduation_strategy}`. Publishes an

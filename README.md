@@ -18,6 +18,10 @@ The `contentstudio` CLI provides a command-line interface for developers and AI 
 - **JSON output for agents** — every command supports `--json` returning a stable `{"ok": true, "data": ...}` envelope.
 - **Dry-run safety** — preview every mutating call before sending it, so AI agents (and humans) never publish by accident.
 - **No SaaS lock-in to your CLI tooling** — talks directly to the production ContentStudio API over HTTPS; no proxy, no extra service.
+- **Full media library management** — folders, move, archive, notes, brand assets,
+  storage usage and permanent deletion. Irreversible commands (`media:delete`,
+  `media:folders:delete`) require `--yes`; `media:archive` is the reversible way to
+  clean up.
 
 ## Installation
 

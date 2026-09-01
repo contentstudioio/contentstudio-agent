@@ -84,7 +84,7 @@ contentstudio workspaces:use <workspace_id>
 
 The CLI silently defaults to the active workspace (whatever was set by `workspaces:use`). That default is fine for **read-only** calls (`workspaces:list`, `accounts:list`, `posts:list`, `media:list`, etc.) — just use the active workspace.
 
-But for any **mutating** action — `accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `accounts:remove`, `posts:create`, `posts:update`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`, `workspaces:update`, `workspaces:delete`, `labels:create`, `labels:update`, `labels:delete`, `campaigns:create`, `campaigns:update`, `campaigns:delete`, `team:add`, `team:update`, `team:remove`, and every `inbox:*` write (`inbox:send`, `inbox:comment-add`, `inbox:comment-delete`, `inbox:review-reply`, `inbox:update`, `inbox:tag-*`, …) — you MUST confirm the workspace with the user first, even if a workspace is already active. Don't assume the active workspace is the one they want to mutate.
+But for any **mutating** action — `accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `accounts:remove`, `posts:create`, `posts:update`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`, `media:folders:create`, `media:folders:rename`, `media:folders:delete`, `media:move`, `media:archive`, `media:note`, `media:brand-asset`, `media:delete`, `workspaces:update`, `workspaces:delete`, `labels:create`, `labels:update`, `labels:delete`, `campaigns:create`, `campaigns:update`, `campaigns:delete`, `team:add`, `team:update`, `team:remove`, and every `inbox:*` write (`inbox:send`, `inbox:comment-add`, `inbox:comment-delete`, `inbox:review-reply`, `inbox:update`, `inbox:tag-*`, …) — you MUST confirm the workspace with the user first, even if a workspace is already active. Don't assume the active workspace is the one they want to mutate.
 
 > **Inbox writes are customer-facing.** `inbox:send`, `inbox:comment-add`, and `inbox:review-reply` publish text to a real person on a real social platform, and there is no undo on the provider side. Always `--dry-run` first, show the exact message text to the user, and get explicit approval before sending. Never compose-and-send a reply to a customer in one step.
 
@@ -341,10 +341,36 @@ Errors: 422 for unknown accounts or a workspace with no connected accounts; 502 
 ### Media library
 
 | Command | Purpose |
-|---------|---------|
-| `media:list [--type images\|videos] [--sort recent\|...]` | List media assets |
-| `media:upload --file <local_path>` | Upload a local file |
-| `media:upload --url <external_url>` | Import from external URL |
+| --- | --- |
+| `media:list [--type images\|videos] [--sort recent\|...] [--folder-id <id>] [--archived]` | List media assets |
+| `media:upload --file <path> \| --url <url> [--folder-id <id>]` | Upload or import media |
+| `media:storage` | Storage limit, used and remaining |
+| `media:folders:list` | List media folders |
+| `media:folders:create --name <n> [--parent-id <id>]` | Create a folder (name 3-40 chars) |
+| `media:folders:rename --folder-id <id> --name <n>` | Rename a folder |
+| `media:folders:delete --folder-id <id> --yes` | **Irreversible** — delete a folder |
+| `media:move --media-id <id>... [--folder-id <id>]` | Move media (omit `--folder-id` for uncategorized) |
+| `media:archive --media-id <id>... [--unarchive]` | **Reversible** soft-delete / restore |
+| `media:note --media-id <id> --note <text> \| --clear` | Set or clear a note (max 500 chars) |
+| `media:brand-asset --media-id <id> [--unflag]` | Flag / unflag as a brand asset |
+| `media:delete --media-id <id> --yes [--confirmed]` | **Irreversible** — permanently delete |
+
+**Cleaning up a library: use `media:archive`, not `media:delete`.** Archiving is
+reversible (`--unarchive` restores). `media:delete` and `media:folders:delete` are
+permanent and both refuse to run without `--yes`.
+
+`media:delete` fails with `REQUIRES_DELETE_CONFIRMATION` when the media backs
+scheduled posts. The error names how many. Re-run with `--confirmed` only after
+telling the user which posts will break.
+
+`--media-id` is repeatable on `media:move` and `media:archive`, max 100 per call.
+
+**`media:brand-asset` moves the file.** Flagging relocates the item into the
+workspace's Brand Assets folder — its `folder_id` changes, and it stops
+appearing in the default `media:list` (it's still there under
+`--folder-id <brand_assets_folder_id>`). The item's original folder isn't
+recorded, so `--unflag` sends it to Uncategorized (`folder_id: null`), not
+back to where it came from.
 
 ### Lookup tables (read)
 
