@@ -1288,6 +1288,46 @@ contentstudio --json analytics:meta-ads-summary --account-id <act_id> --start-da
 contentstudio --json analytics:google-ads-ai-insights --account-id <id> --start-date <d> --end-date <d> --type aiInsightsDetailed
 contentstudio analytics:<platform>-<report> --help                                 # Exact options per command
 
+# Analytics — reports (async: generate, then poll)
+contentstudio --json reports:options                                                # Report types + their sections
+contentstudio reports:generate --name "Aug" --platform-type facebook \
+  --accounts <id> --date "2026-08-01 - 2026-08-31"                                  # Returns an id immediately
+contentstudio reports:get <report_id> --wait                                        # Poll until ready, print download URL
+contentstudio --json reports:list                                                   # Previously generated
+contentstudio reports:retry <report_id>                                             # Re-run a failed one
+contentstudio reports:delete <report_id>                                            # Remove
+
+# Analytics — recurring schedules
+contentstudio report-schedules:create --name "Monthly" --platform-type facebook \
+  --frequency monthly --accounts <id> --emails a@b.com                              # Provision once
+contentstudio --json report-schedules:list                                          # All schedules
+contentstudio report-schedules:get <schedule_id>                                    # Last run / next run
+contentstudio report-schedules:pause <schedule_id>                                  # Reversible
+contentstudio report-schedules:resume <schedule_id>
+contentstudio report-schedules:run <schedule_id>                                    # Send one now
+contentstudio report-schedules:delete <schedule_id>
+
+# Analytics — client-facing share links (no ContentStudio account needed)
+contentstudio share-links:create --title "Q3" --platform instagram \
+  --account-id <id> --date-range "2026-07-01 - 2026-09-30" --password secret        # Pinned + protected
+contentstudio --json share-links:list
+contentstudio share-links:get <id>
+contentstudio share-links:disable <id>                                              # Revoke without deleting
+contentstudio share-links:enable <id>
+contentstudio share-links:delete <id>
+
+# Analytics — competitor benchmarking
+contentstudio competitors:search "Nike" --platform-type facebook                    # Find a page to track
+contentstudio competitor-reports:create --name "Rivals" --platform-type facebook \
+  --competitors "15087023444:Nike,763612290406925:Cheezious"                        # Saved set
+contentstudio --json competitor-reports:list
+contentstudio competitor-reports:get <report_id>                                    # Per-competitor state
+contentstudio competitor-reports:update <report_id> --name "Rivals" \
+  --platform-type facebook --competitors "..."                                      # Replaces the whole set
+contentstudio competitor-reports:delete <report_id>
+contentstudio competitors:compare <report_id> --platform facebook \
+  --start-date 2026-08-01 --end-date 2026-08-31                                     # The comparison numbers
+
 # Globals
 contentstudio --version                                                             # Print version
 contentstudio --help                                                                # Top-level help
