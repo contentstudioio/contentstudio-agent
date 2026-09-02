@@ -61,7 +61,7 @@ function registerLabels<T>(yargs: Argv<T>): Argv<T> {
         const data = await createLabel(client, wid, body);
         out.emitSuccess(data, g, (d: any) => {
           out.success("Label created.");
-          out.status("ID", String(d?._id ?? d?.id ?? "-"));
+          out.status("ID", String(d?.id ?? d?._id ?? "-"));
         });
       }),
     )
@@ -137,7 +137,7 @@ function registerCampaigns<T>(yargs: Argv<T>): Argv<T> {
         const data = await createCampaign(client, wid, body);
         out.emitSuccess(data, g, (d: any) => {
           out.success("Campaign created.");
-          out.status("ID", String(d?._id ?? d?.id ?? "-"));
+          out.status("ID", String(d?.id ?? d?._id ?? "-"));
         });
       }),
     )
@@ -231,7 +231,7 @@ function registerTeam<T>(yargs: Argv<T>): Argv<T> {
         const data = await addTeamMember(client, wid, body);
         out.emitSuccess(data, g, (d: any) => {
           out.success("Team member added.");
-          out.status("ID", String(d?._id ?? d?.member_id ?? "-"));
+          out.status("ID", String(d?.id ?? d?.member_id ?? d?._id ?? "-"));
         });
       }),
     )
@@ -316,7 +316,7 @@ function registerTeam<T>(yargs: Argv<T>): Argv<T> {
 function registerAccounts<T>(yargs: Argv<T>): Argv<T> {
   return yargs.command(
     "accounts:remove <account_id>",
-    "Remove (disconnect) a social account. account_id is the account's _id from accounts:list. Requires the save_social permission.",
+    "Remove (disconnect) a social account. account_id is the account's id from accounts:list. Requires the save_social permission.",
     (y) =>
       y
         .positional("account_id", { type: "string", demandOption: true })

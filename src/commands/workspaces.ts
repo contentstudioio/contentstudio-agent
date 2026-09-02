@@ -35,7 +35,7 @@ export function registerWorkspaces<T>(yargs: Argv<T>): Argv<T> {
             out.table(
               ["ID", "Name", "Slug", "Timezone"],
               items.map((w) => [
-                w._id ?? "-",
+                w.id ?? w._id ?? "-",
                 w.name ?? "-",
                 w.slug ?? "-",
                 w.timezone ?? "-",
@@ -57,7 +57,9 @@ export function registerWorkspaces<T>(yargs: Argv<T>): Argv<T> {
           const client = new Client(cfg);
           const list = await listWorkspaces(client, { per_page: 100 });
           const items = (list.data as any[]) ?? [];
-          const hit = items.find((w) => w._id === argv.workspace_id);
+          const hit = items.find(
+            (w) => (w.id ?? w._id) === argv.workspace_id,
+          );
           if (hit) name = hit.name ?? null;
         } catch {
           /* best-effort name lookup */
@@ -133,7 +135,7 @@ export function registerWorkspaces<T>(yargs: Argv<T>): Argv<T> {
         const data = await createWorkspace(client, body);
         out.emitSuccess(data, g, (d: any) => {
           out.success("Workspace created.");
-          out.status("ID", String(d?._id ?? d?.id ?? "-"));
+          out.status("ID", String(d?.id ?? d?._id ?? "-"));
           out.status("Name", d?.name ?? "-");
         });
       }),

@@ -85,6 +85,63 @@ All of them take `--dry-run`, `--json` and `--timeout <seconds>`.
   neither, the same way `accepts_instructions` on `headshot` / `face-swap` is
   unreachable when only `product-image` declares `instructions`.
 
+## Unreleased — Ads analytics support
+
+34 more commands under the `analytics:` namespace, tracking the public API's ads
+surface (added after the analytics work below):
+
+- **Meta Ads (11)** and **Google Ads (17)** — summary, performance over time /
+  by level / by placement / by type, campaigns, ad sets, ad groups, ads,
+  keywords, search terms, shopping, the four Google conversion reports,
+  demographics, ad-account listing, and `ai-insights` on both. These take
+  `--account-id` (an ad account) rather than `--platform-id`.
+- **Campaigns & Labels (5)** — summary, breakdown, insights-breakdown, posts and
+  top-posts. The only POST analytics commands: their filters are lists, so
+  `--campaigns`, `--labels` and the per-network `--*-accounts` flags repeat.
+- **YouTube publishing-behaviour** — the one social endpoint added since.
+
+`analytics:*-accounts` is how you find an ad account id; every other ads command
+needs one. Still read-only, still one command per endpoint.
+
+## Unreleased — Analytics support
+
+99 new commands under the `analytics:` namespace, one per ContentStudio
+public API v1 analytics endpoint, across Facebook, Instagram, YouTube,
+Pinterest, LinkedIn, Google Business Profile, TikTok, and Twitter/X.
+
+- Date-range reports (`--platform-id`, `--start-date`, `--end-date`, plus
+  per-command optional filters like `--order-by`, `--media-type`,
+  `--hashtags`, `--limit`/`--offset`).
+- Single-item lookups (`*-single-post`, `*-single-pin`, `*-single-tweet`,
+  `*-single-video`) taking `--platform-id` + `--post-id`.
+- AI insights commands (`*-ai-insights`) taking `--type` and `--language`.
+- All read-only GETs — no `--dry-run` (mutating commands only).
+- SKILL.md documents the full command reference and the
+  `ANALYTICS_UPSTREAM_ERROR` response shape.
+
+## Unreleased — Instagram trial reels, per-platform overrides, `id` field rename, `platform_overrides` rename
+
+- `posts:create` / `posts:update`: added `--instagram-trial-reel` (boolean) and
+  `--instagram-trial-reel-graduation SS_PERFORMANCE|MANUAL` →
+  `instagram_options.trial_reel.{enabled,graduation_strategy}`. Publishes an
+  Instagram trial reel (shown to non-followers first). Requires
+  `--post-type reel` exactly plus a video; rejected (422) together with
+  `--instagram-collaborator` — the CLI now guards this locally as well.
+- `posts:create` / `posts:update`: added `--platform-overrides '<json>'` →
+  top-level `platform_overrides`, a per-platform content-override object
+  (`text`/`post_type` merge independently with the common content; `media`
+  is all-or-nothing per platform). Field was renamed from `overrides` to
+  `platform_overrides` to match a pre-release backend contract fix — no
+  compatibility shim needed since neither side has shipped yet.
+- **Breaking (mirrors a backend Public API v1 change):** all Public API v1
+  responses now return the primary identifier as `id` instead of `_id`
+  (accounts, media, workspaces, team members, campaigns, approval workflows,
+  labels, comments, content categories, posts and their nested
+  `labels[]`/`folder`/`accounts[]`). `member_id` on team members is unaffected
+  — it remains a distinct field. CLI output formatting and docs now read
+  `id` first, falling back to `_id` for compatibility with any cached/older
+  responses.
+
 ## 1.2.0 — Best time to post
 
 ### `scheduling:best-times`

@@ -8,9 +8,9 @@
 npx skills add contentstudioio/contentstudio-agent
 ```
 
-ContentStudio CLI — schedule social-media posts, generate AI images, manage media, accounts, comments, and approvals across **Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, and Google Business Profile** through the [ContentStudio](https://contentstudio.io) public API.
+ContentStudio CLI — schedule social-media posts, generate AI images, manage media, accounts, comments, approvals, the social inbox, and analytics across **Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, and Google Business Profile** through the [ContentStudio](https://contentstudio.io) public API.
 
-The `contentstudio` CLI provides a command-line interface for developers and AI agents to drive a ContentStudio workspace from the terminal — scheduling posts, generating and editing images with AI, uploading media, managing approvals, and auditing accounts/campaigns/labels — using the same API your dashboard does.
+The `contentstudio` CLI provides a command-line interface for developers and AI agents to drive a ContentStudio workspace from the terminal — scheduling posts, generating and editing images with AI, uploading media, managing approvals, triaging the inbox, pulling analytics reports, and auditing accounts/campaigns/labels — using the same API your dashboard does.
 
 ## Why use this CLI
 
@@ -142,7 +142,7 @@ contentstudio --json campaigns:list
 contentstudio --json categories:list
 contentstudio --json labels:list
 contentstudio --json team:list
-contentstudio --json approval-workflows:list   # use an item's _id as --approval-workflow-id
+contentstudio --json approval-workflows:list   # use an item's id as --approval-workflow-id
 ```
 
 All support `--page` and `--per-page`; the campaigns/categories/labels/team lists also support `--search`.
@@ -204,7 +204,7 @@ contentstudio --json accounts:remove <account_id> --dry-run
 contentstudio --json accounts:remove <account_id>
 ```
 
-`account_id` is the account's `_id` from `accounts:list`. Requires the `save_social` permission (403 otherwise); 404 if the account isn't in the workspace.
+`account_id` is the account's `id` from `accounts:list`. Requires the `save_social` permission (403 otherwise); 404 if the account isn't in the workspace.
 
 All three connect commands support `--dry-run` to preview the payload without calling the API.
 
@@ -330,6 +330,23 @@ contentstudio --json posts:create --dry-run \
 ```
 
 The top-level `-c / --content` is the lead tweet; each `--twitter` item is a follow-up tweet in the chain, in order (don't repeat the lead text in the items). The CLI parses the JSON array locally and sets `has_threaded_tweets: true`. Each item needs `message` or `media`. Unlike Threads, Twitter does **not** allow mixed media in one tweet (no images + video together) and allows **max 1 video per tweet** — the backend enforces this and returns a 422 if violated.
+
+### Per-platform content overrides (`--platform-overrides`)
+
+Publish the same post to several platforms but swap the caption, post type, or media for one of them:
+
+```bash
+contentstudio --json posts:create --dry-run \
+  -c "Common caption" \
+  -i <facebook_id> -i <tiktok_id> \
+  -t draft \
+  -m https://example.com/common.jpg \
+  --platform-overrides '{"tiktok":{"content":{"media":{"video":"https://example.com/clip.mp4"}}}}'
+```
+
+TikTok publishes with the *common* text (`"Common caption"`, inherited — the override didn't touch `text`) and its *own* video, with **no images at all** — because the override's `content` includes a `media` key, TikTok's media is defined entirely by the override (no per-field fallback to the common image). Facebook, which has no override entry, publishes the common text and image unchanged.
+
+Keyed platforms: `facebook`, `instagram`, `twitter`, `linkedin`, `pinterest`, `youtube`, `tiktok`, `gmb`, `tumblr`, `threads`, `bluesky`, `telegram`. Each value is `{"content":{"text"?,"post_type"?,"media"?:{"images"?,"video"?}}}`. `text` and `post_type` merge independently with the common `content` (an override can set one without the other); `media` is all-or-nothing per platform. Omit `--platform-overrides` to publish the same `content` everywhere.
 
 ### Post with a first comment
 
@@ -783,7 +800,34 @@ Preview (no upload):
 contentstudio --json media:upload --url https://example.com/img.jpg --dry-run
 ```
 
-The response includes an `_id` you can pass as `--media-id` when creating posts.
+The response includes an `id` you can pass as `--media-id` when creating posts.
+
+## Analytics
+
+Read-only performance reports across Facebook, Instagram, YouTube, Pinterest, LinkedIn, Google Business Profile, TikTok, Twitter/X, Meta Ads and Google Ads, plus cross-network Campaigns & Labels reports — 133 commands under the `analytics:` namespace, one per backend endpoint. Full per-platform command reference lives in [SKILL.md](./SKILL.md#analytics).
+
+```bash
+# Date-range report — most commands take --platform-id + --start-date/--end-date
+contentstudio --json analytics:instagram-top-posts \
+  --platform-id <account_id> --start-date 2026-08-01 --end-date 2026-08-12
+
+# With optional filters (order-by is an enum, media-type is repeatable)
+contentstudio --json analytics:facebook-get-top-posts \
+  --platform-id <account_id> --start-date 2026-08-01 --end-date 2026-08-12 \
+  --order-by comments --media-type IMAGE --media-type VIDEO
+
+# Single-item lookup — platform-native id, not a ContentStudio id
+contentstudio --json analytics:youtube-single-video --platform-id <account_id> --post-id <video_id>
+
+# AI-generated insights
+contentstudio --json analytics:linkedin-ai-insights \
+  --platform-id <account_id> --start-date 2026-08-01 --end-date 2026-08-12 --language en
+
+# See exactly which options a given command takes
+contentstudio analytics:pinterest-top-pins --help
+```
+
+All analytics commands are read-only GETs — none take `--dry-run`. A response with `"status": false` and `"error_code": "ANALYTICS_UPSTREAM_ERROR"` means ContentStudio's own analytics pipeline is temporarily unavailable, not a bad request.
 
 ## AI Images
 
@@ -1003,6 +1047,19 @@ contentstudio posts:create \
   --video-url https://example.com/reel.mp4 \
   --post-type reel
 
+# Trial reel — shown to non-followers first, not on the profile grid or
+# follower feeds. Requires --post-type reel exactly, plus a video.
+# Rejected (422) together with --instagram-collaborator.
+contentstudio posts:create \
+  -c "" \
+  -i <instagram_id> \
+  -t scheduled \
+  -s "2026-05-01 10:00:00" \
+  --video-url https://example.com/reel.mp4 \
+  --post-type reel \
+  --instagram-trial-reel \
+  --instagram-trial-reel-graduation SS_PERFORMANCE
+
 # Story
 contentstudio posts:create \
   -c "" \
@@ -1185,9 +1242,9 @@ done
 TIME="2026-05-01 10:00:00"
 
 # List accounts and pick one per platform
-FB=$(contentstudio --json accounts:list --platform facebook | jq -r '.data[0]._id')
-LI=$(contentstudio --json accounts:list --platform linkedin | jq -r '.data[0]._id')
-TW=$(contentstudio --json accounts:list --platform twitter  | jq -r '.data[0]._id')
+FB=$(contentstudio --json accounts:list --platform facebook | jq -r '.data[0].id')
+LI=$(contentstudio --json accounts:list --platform linkedin | jq -r '.data[0].id')
+TW=$(contentstudio --json accounts:list --platform twitter  | jq -r '.data[0].id')
 
 contentstudio --json posts:create \
   -c "Big launch today 🚀" \
@@ -1204,7 +1261,7 @@ contentstudio --json posts:create \
 CUTOFF=$(date -d '-30 days' '+%Y-%m-%d')
 
 contentstudio --json posts:list --status draft --date-to "$CUTOFF" --per-page 100 \
-  | jq -r '.data[]._id' \
+  | jq -r '.data[].id' \
   | while read id; do
       contentstudio --json posts:delete "$id"
     done
@@ -1219,7 +1276,7 @@ ACCOUNT="<instagram_id>"
 for img in ./photos/*.jpg; do
   # Upload first to get a media library ID
   RESP=$(contentstudio --json media:upload --file "$img")
-  MEDIA_ID=$(echo "$RESP" | jq -r '.data._id')
+  MEDIA_ID=$(echo "$RESP" | jq -r '.data.id')
 
   # Schedule a post with the uploaded media
   TIME=$(date -d "+1 hour" '+%F %T')
@@ -1240,7 +1297,7 @@ done
 TRUSTED_USER_ID="<user_id>"
 
 contentstudio --json posts:list --status pending_approval --per-page 50 \
-  | jq -r --arg u "$TRUSTED_USER_ID" '.data[] | select(.created_by == $u) | ._id' \
+  | jq -r --arg u "$TRUSTED_USER_ID" '.data[] | select(.created_by == $u) | .id' \
   | while read id; do
       contentstudio --json posts:approve "$id" --comment "auto-approved (trusted creator)"
     done
@@ -1390,6 +1447,13 @@ contentstudio --json images:outfit-swap --target-image-url <url> --outfit-image-
 contentstudio --json images:upscale --image-url <url>                                # Upscale
 contentstudio --json images:remove-background --image-url <url>                      # Cut out subject
 contentstudio --json images:tool <tool_key> --body '<json>'                          # Any tool, all controls
+
+# Analytics (133 commands — one per endpoint; see SKILL.md#analytics for the full list)
+contentstudio --json analytics:<platform>-<report> --platform-id <id> --start-date <d> --end-date <d>
+contentstudio --json analytics:<platform>-single-post --platform-id <id> --post-id <native_id>
+contentstudio --json analytics:meta-ads-summary --account-id <act_id> --start-date <d> --end-date <d>
+contentstudio --json analytics:google-ads-ai-insights --account-id <id> --start-date <d> --end-date <d> --type aiInsightsDetailed
+contentstudio analytics:<platform>-<report> --help                                 # Exact options per command
 
 # Globals
 contentstudio --version                                                             # Print version

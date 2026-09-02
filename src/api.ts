@@ -437,7 +437,7 @@ export function updatePost(
 
 /**
  * GET /workspaces/{w}/approval-workflows — list the workspace's approval
- * workflows. Each item exposes `_id` (use as `approval_workflow.workflow_id`),
+ * workflows. Each item exposes `id` (use as `approval_workflow.workflow_id`),
  * `name`, `is_default`, and `levels[]`.
  */
 export function listApprovalWorkflows(
@@ -699,7 +699,7 @@ export function removeTeamMember(
 
 // ─────────────────────────────────────────────────────────────────
 // Social accounts — remove (disconnect) a connected account.
-// `accountId` is the account's `_id` from accounts:list.
+// `accountId` is the account's `id` from accounts:list.
 // ─────────────────────────────────────────────────────────────────
 
 /**
@@ -1349,6 +1349,1408 @@ export function detachInboxTag(
     { params },
   );
 }
+
+// ─────────────────────────────────────────────────────────────────
+// Analytics — one function per ContentStudio v1 analytics endpoint
+// (Facebook, Instagram, YouTube, Pinterest, LinkedIn, GMB, TikTok,
+// Twitter/X). Every endpoint shares the same query shape; analyticsQuery()
+// maps a single params object to Laravel-style array query keys
+// (`name[]=...`), matching the `"status[]"` convention used by listPosts().
+// ─────────────────────────────────────────────────────────────────
+
+export interface AnalyticsParams {
+  platform_id: string;
+  post_id?: string;
+  start_date?: string;
+  end_date?: string;
+  date?: string;
+  timezone?: string;
+  type?: string;
+  limit?: number;
+  offset?: number;
+  order_by?: string;
+  sort_order?: string;
+  media_type?: string[];
+  hashtags?: string[];
+  entity_type?: string[];
+  tweet_type?: string[];
+  topic_type?: string[];
+  board_id?: string;
+  language?: string;
+}
+
+function analyticsQuery(p: AnalyticsParams): Record<string, unknown> {
+  return {
+    platform_id: p.platform_id,
+    post_id: p.post_id,
+    start_date: p.start_date,
+    end_date: p.end_date,
+    date: p.date,
+    timezone: p.timezone,
+    type: p.type,
+    limit: p.limit,
+    offset: p.offset,
+    order_by: p.order_by,
+    sort_order: p.sort_order,
+    "media_type[]": p.media_type,
+    "hashtags[]": p.hashtags,
+    "entity_type[]": p.entity_type,
+    "tweet_type[]": p.tweet_type,
+    "topic_type[]": p.topic_type,
+    board_id: p.board_id,
+    language: p.language,
+  };
+}
+
+// ── facebook ──────────────────────────────────────────────
+
+/** Facebook active users by hour and day of week */
+export function facebookAnalyticsActiveUsers(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/active-users`, analyticsQuery(params));
+}
+
+/** Facebook AI-generated insights */
+export function facebookAnalyticsAiInsights(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/ai-insights`, analyticsQuery(params));
+}
+
+/** Facebook fan / follower growth over time */
+export function facebookAnalyticsAudienceGrowth(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/audience-growth`, analyticsQuery(params));
+}
+
+/** Facebook audience location (country/city breakdown) */
+export function facebookAnalyticsAudienceLocation(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/audience-location`, analyticsQuery(params));
+}
+
+/** Facebook audience age / gender / country / city demographics */
+export function facebookAnalyticsDemographics(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/demographics`, analyticsQuery(params));
+}
+
+/** Facebook demographics overview widget */
+export function facebookAnalyticsDemographicsOverview(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/overview-demographics`, analyticsQuery(params));
+}
+
+/** Facebook page engagements over time */
+export function facebookAnalyticsEngagement(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/engagement`, analyticsQuery(params));
+}
+
+/** Facebook top posts with media_type filter */
+export function facebookAnalyticsGetTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/sorted-top-posts`, analyticsQuery(params));
+}
+
+/** Facebook page impressions over time */
+export function facebookAnalyticsImpressions(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/impressions`, analyticsQuery(params));
+}
+
+/** Facebook top posts (overview widget) */
+export function facebookAnalyticsOverviewTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/top-posts`, analyticsQuery(params));
+}
+
+/** Facebook engagement by impression type over time */
+export function facebookAnalyticsPublishingBehaviour(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/publishing-behaviour`, analyticsQuery(params));
+}
+
+/** Facebook Reels performance over time */
+export function facebookAnalyticsReels(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/reels-performance`, analyticsQuery(params));
+}
+
+/** Get a single Facebook post by ID */
+export function facebookAnalyticsSinglePost(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/post`, analyticsQuery(params));
+}
+
+/** Facebook summary KPIs — current vs previous period */
+export function facebookAnalyticsSummary(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/summary`, analyticsQuery(params));
+}
+
+/** Facebook video view time and plays over time */
+export function facebookAnalyticsVideoInsights(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/video-insights`, analyticsQuery(params));
+}
+
+// ── gmb ──────────────────────────────────────────────
+
+/** GMB customer actions (clicks, calls, directions) over time */
+export function gmbAnalyticsActions(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/gmb/actions`, analyticsQuery(params));
+}
+
+/** GMB AI-generated insights */
+export function gmbAnalyticsAiInsights(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/gmb/ai-insights`, analyticsQuery(params));
+}
+
+/** GMB impressions breakdown by channel and device over time */
+export function gmbAnalyticsImpressions(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/gmb/impressions`, analyticsQuery(params));
+}
+
+/** GMB media (photo/video) activity over time */
+export function gmbAnalyticsMediaActivity(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/gmb/media-activity`, analyticsQuery(params));
+}
+
+/** GMB posts published over time and topic-type breakdown */
+export function gmbAnalyticsPublishingBehavior(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/gmb/publishing-behaviour`, analyticsQuery(params));
+}
+
+/** GMB reviews — ratings, distribution, and daily activity */
+export function gmbAnalyticsReviews(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/gmb/reviews`, analyticsQuery(params));
+}
+
+/** GMB top search keywords that surfaced the listing */
+export function gmbAnalyticsSearchKeywords(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/gmb/search-keywords`, analyticsQuery(params));
+}
+
+/** Get a single GMB post by ID */
+export function gmbAnalyticsSinglePost(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/gmb/post`, analyticsQuery(params));
+}
+
+/** GMB summary KPIs — current vs previous period */
+export function gmbAnalyticsSummary(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/gmb/summary`, analyticsQuery(params));
+}
+
+/** GMB top-performing posts */
+export function gmbAnalyticsTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/gmb/top-posts`, analyticsQuery(params));
+}
+
+// ── instagram ──────────────────────────────────────────────
+
+/** Instagram active users by hour and day of week */
+export function instagramAnalyticsActiveUsers(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/instagram/active-users`, analyticsQuery(params));
+}
+
+/** Instagram AI-generated insights */
+export function instagramAnalyticsAiInsights(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/instagram/ai-insights`, analyticsQuery(params));
+}
+
+/** Instagram follower growth over time */
+export function instagramAnalyticsAudienceGrowth(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/instagram/audience-growth`, analyticsQuery(params));
+}
+
+/** Instagram audience country / city breakdown */
+export function instagramAnalyticsCountryCity(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/instagram/audience-location`, analyticsQuery(params));
+}
+
+/** Instagram audience age / gender breakdown */
+export function instagramAnalyticsDemographicsAge(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/instagram/demographics`, analyticsQuery(params));
+}
+
+/** Instagram post engagement over time */
+export function instagramAnalyticsEngagement(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/instagram/engagement`, analyticsQuery(params));
+}
+
+/** Instagram top posts with hashtag filter */
+export function instagramAnalyticsGetTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/instagram/sorted-top-posts`, analyticsQuery(params));
+}
+
+/** Instagram top hashtags by engagement */
+export function instagramAnalyticsHashtags(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/instagram/hashtags`, analyticsQuery(params));
+}
+
+/** Instagram post impressions over time */
+export function instagramAnalyticsImpressions(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/instagram/impressions`, analyticsQuery(params));
+}
+
+/** Instagram post engagement by media type over time */
+export function instagramAnalyticsPublishingBehaviour(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/instagram/publishing-behaviour`, analyticsQuery(params));
+}
+
+/** Instagram Reels engagement and watch time over time */
+export function instagramAnalyticsReelsPerformance(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/instagram/reels-performance`, analyticsQuery(params));
+}
+
+/** Get a single Instagram post by ID */
+export function instagramAnalyticsSinglePost(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/instagram/post`, analyticsQuery(params));
+}
+
+/** Instagram stories impressions, reach, and interactions over time */
+export function instagramAnalyticsStoriesPerformance(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/instagram/stories-performance`, analyticsQuery(params));
+}
+
+/** Instagram summary KPIs — current vs previous period */
+export function instagramAnalyticsSummary(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/instagram/summary`, analyticsQuery(params));
+}
+
+/** Instagram top-performing posts */
+export function instagramAnalyticsTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/instagram/top-posts`, analyticsQuery(params));
+}
+
+// ── linkedin ──────────────────────────────────────────────
+
+/** LinkedIn AI-generated insights */
+export function linkedinAnalyticsAiInsights(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/linkedin/ai-insights`, analyticsQuery(params));
+}
+
+/** LinkedIn follower growth over time */
+export function linkedinAnalyticsAudienceGrowth(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/linkedin/audience-growth`, analyticsQuery(params));
+}
+
+/** LinkedIn follower demographics by industry, country, and other dimensions */
+export function linkedinAnalyticsFollowersDemographics(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/linkedin/demographics`, analyticsQuery(params));
+}
+
+/** LinkedIn top posts with hashtag and media type filter */
+export function linkedinAnalyticsGetTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/linkedin/sorted-top-posts`, analyticsQuery(params));
+}
+
+/** LinkedIn top hashtags by engagement */
+export function linkedinAnalyticsHashtags(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/linkedin/hashtags`, analyticsQuery(params));
+}
+
+/** LinkedIn page views over time (desktop vs mobile) */
+export function linkedinAnalyticsPageViews(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/linkedin/page-views`, analyticsQuery(params));
+}
+
+/** LinkedIn post count distribution by day of week */
+export function linkedinAnalyticsPostsPerDays(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/linkedin/posts-per-days`, analyticsQuery(params));
+}
+
+/** LinkedIn post engagement by media type over time */
+export function linkedinAnalyticsPublishingBehaviour(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/linkedin/publishing-behaviour`, analyticsQuery(params));
+}
+
+/** Get a single LinkedIn post by ID */
+export function linkedinAnalyticsSinglePost(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/linkedin/post`, analyticsQuery(params));
+}
+
+/** LinkedIn summary KPIs — current vs previous period */
+export function linkedinAnalyticsSummary(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/linkedin/summary`, analyticsQuery(params));
+}
+
+/** LinkedIn top-performing posts */
+export function linkedinAnalyticsTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/linkedin/top-posts`, analyticsQuery(params));
+}
+
+// ── pinterest ──────────────────────────────────────────────
+
+/** Pinterest AI-generated insights */
+export function pinterestAnalyticsAiInsights(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/pinterest/ai-insights`, analyticsQuery(params));
+}
+
+/** Pinterest cumulative engagement trend over time */
+export function pinterestAnalyticsEngagementTrend(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/pinterest/engagement`, analyticsQuery(params));
+}
+
+/** Pinterest daily-delta engagement trend */
+export function pinterestAnalyticsEngagementTrendDaily(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/pinterest/engagement-daily`, analyticsQuery(params));
+}
+
+/** Pinterest cumulative follower trend over time */
+export function pinterestAnalyticsFollowerTrend(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/pinterest/audience-growth`, analyticsQuery(params));
+}
+
+/** Pinterest daily-delta follower trend */
+export function pinterestAnalyticsFollowerTrendDaily(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/pinterest/audience-growth-daily`, analyticsQuery(params));
+}
+
+/** Pinterest cumulative impressions trend over time */
+export function pinterestAnalyticsImpressionsTrend(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/pinterest/impressions`, analyticsQuery(params));
+}
+
+/** Pinterest daily-delta impressions trend */
+export function pinterestAnalyticsImpressionsTrendDaily(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/pinterest/impressions-daily`, analyticsQuery(params));
+}
+
+/** Pinterest pin performance metrics over time */
+export function pinterestAnalyticsPinPerformance(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/pinterest/pin-performance`, analyticsQuery(params));
+}
+
+/** Pinterest cumulative pin posting activity over time */
+export function pinterestAnalyticsPinPosting(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/pinterest/pin-posting`, analyticsQuery(params));
+}
+
+/** Pinterest daily-delta pin posting activity */
+export function pinterestAnalyticsPinPostingDaily(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/pinterest/pin-posting-daily`, analyticsQuery(params));
+}
+
+/** Pinterest pin performance rollup — current vs previous period */
+export function pinterestAnalyticsPinRollup(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/pinterest/pin-rollup`, analyticsQuery(params));
+}
+
+/** Get a single Pinterest pin by ID */
+export function pinterestAnalyticsSinglePin(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/pinterest/pin`, analyticsQuery(params));
+}
+
+/** Pinterest summary KPIs — current vs previous period */
+export function pinterestAnalyticsSummary(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/pinterest/summary`, analyticsQuery(params));
+}
+
+/** Pinterest top-performing and least-performing pins */
+export function pinterestAnalyticsTopPins(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/pinterest/top-pins`, analyticsQuery(params));
+}
+
+// ── tiktok ──────────────────────────────────────────────
+
+/** TikTok AI-generated insights */
+export function tiktokAnalyticsAiInsights(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/tiktok/ai-insights`, analyticsQuery(params));
+}
+
+/** TikTok daily engagement trend over time */
+export function tiktokAnalyticsEngagementTrend(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/tiktok/engagement`, analyticsQuery(params));
+}
+
+/** TikTok follower and views trend over time */
+export function tiktokAnalyticsFollowerTrend(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/tiktok/audience-growth`, analyticsQuery(params));
+}
+
+/** TikTok daily post volume and engagement breakdown over time */
+export function tiktokAnalyticsPublishingBehaviour(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/tiktok/publishing-behaviour`, analyticsQuery(params));
+}
+
+/** Get a single TikTok post by ID */
+export function tiktokAnalyticsSinglePost(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/tiktok/post`, analyticsQuery(params));
+}
+
+/** TikTok posts sorted by a configurable metric */
+export function tiktokAnalyticsSortedTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/tiktok/sorted-top-posts`, analyticsQuery(params));
+}
+
+/** TikTok summary KPIs — current vs previous period */
+export function tiktokAnalyticsSummary(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/tiktok/summary`, analyticsQuery(params));
+}
+
+/** TikTok top and least performing posts */
+export function tiktokAnalyticsTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/tiktok/top-posts`, analyticsQuery(params));
+}
+
+// ── twitter ──────────────────────────────────────────────
+
+/** Twitter API credits usage for the workspace */
+export function twitterAnalyticsCreditsUsed(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/twitter/credits-used`, analyticsQuery(params));
+}
+
+/** Twitter engagement and impression trend over time */
+export function twitterAnalyticsEngagementImpression(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/twitter/engagement-impression`, analyticsQuery(params));
+}
+
+/** Twitter follower trend over time */
+export function twitterAnalyticsFollowersTrend(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/twitter/audience-growth`, analyticsQuery(params));
+}
+
+/** Twitter least-performing tweets */
+export function twitterAnalyticsLeastTweets(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/twitter/least-tweets`, analyticsQuery(params));
+}
+
+/** Get a single Twitter/X tweet by ID */
+export function twitterAnalyticsSingleTweet(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/twitter/tweet`, analyticsQuery(params));
+}
+
+/** Twitter summary KPIs — current vs previous period */
+export function twitterAnalyticsSummary(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/twitter/summary`, analyticsQuery(params));
+}
+
+/** Twitter top-performing tweets */
+export function twitterAnalyticsTopTweets(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/twitter/top-tweets`, analyticsQuery(params));
+}
+
+// ── youtube ──────────────────────────────────────────────
+
+/** YouTube AI-generated insights */
+export function youtubeAnalyticsAiInsights(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/ai-insights`, analyticsQuery(params));
+}
+
+/** YouTube audience demographics — age & gender, device type, subscriber change */
+export function youtubeAnalyticsDemographics(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/demographics`, analyticsQuery(params));
+}
+
+/** YouTube cumulative engagement trend over time */
+export function youtubeAnalyticsEngagementTrend(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/engagement`, analyticsQuery(params));
+}
+
+/** YouTube daily-delta engagement trend */
+export function youtubeAnalyticsEngagementTrendDaily(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/engagement-daily`, analyticsQuery(params));
+}
+
+/** YouTube traffic source breakdown (how viewers found videos) */
+export function youtubeAnalyticsFindVideo(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/find-video`, analyticsQuery(params));
+}
+
+/** YouTube least-performing videos ordered by views and engagement */
+export function youtubeAnalyticsLeastPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/least-posts`, analyticsQuery(params));
+}
+
+/** YouTube video performance metrics grouped by publish date */
+export function youtubeAnalyticsPerformanceSchedule(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/performance-schedule`, analyticsQuery(params));
+}
+
+/** Get a single YouTube video by ID */
+export function youtubeAnalyticsSingleVideo(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/video`, analyticsQuery(params));
+}
+
+/** YouTube videos sorted by a configurable metric */
+export function youtubeAnalyticsSortedTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/sorted-top-posts`, analyticsQuery(params));
+}
+
+/** YouTube cumulative subscriber trend over time */
+export function youtubeAnalyticsSubscriberTrend(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/audience-growth`, analyticsQuery(params));
+}
+
+/** YouTube daily-delta subscriber trend */
+export function youtubeAnalyticsSubscriberTrendDaily(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/audience-growth-daily`, analyticsQuery(params));
+}
+
+/** YouTube summary KPIs — current vs previous period */
+export function youtubeAnalyticsSummary(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/summary`, analyticsQuery(params));
+}
+
+/** YouTube top geographies — countries pre-sorted by views, watch time, view duration and view percentage */
+export function youtubeAnalyticsTopGeographies(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/top-geographies`, analyticsQuery(params));
+}
+
+/** YouTube top videos ordered by views and engagement */
+export function youtubeAnalyticsTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/top-posts`, analyticsQuery(params));
+}
+
+/** YouTube sharing platform breakdown */
+export function youtubeAnalyticsVideoSharing(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/video-sharing`, analyticsQuery(params));
+}
+
+/** YouTube cumulative views split by subscriber / non-subscriber */
+export function youtubeAnalyticsViewsTrend(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/views-trend`, analyticsQuery(params));
+}
+
+/** YouTube daily-delta views trend */
+export function youtubeAnalyticsViewsTrendDaily(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/views-trend-daily`, analyticsQuery(params));
+}
+
+/** YouTube cumulative watch time split by subscriber / non-subscriber */
+export function youtubeAnalyticsWatchTimeTrend(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/watch-time-trend`, analyticsQuery(params));
+}
+
+/** YouTube daily-delta watch time trend */
+export function youtubeAnalyticsWatchTimeTrendDaily(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/watch-time-trend-daily`, analyticsQuery(params));
+}
+
+
+// ── ads analytics ─────────────────────────────────────────
+
+/**
+ * Params shared by every Ads Analytics endpoint, Meta and Google alike. The
+ * account is an ad account (`act_…` on Meta, a customer id on Google) rather
+ * than a social `platform_id`, and the filters are the union of both
+ * platforms' — each command below declares the ones its endpoint accepts.
+ */
+export interface AdsAnalyticsParams {
+  account_id?: string;
+  ad_group_id?: string;
+  ad_set_id?: string;
+  breakdown?: string;
+  campaign_id?: string;
+  country?: string;
+  end_date?: string;
+  language?: string;
+  level?: string;
+  limit?: number;
+  match_type?: string;
+  metric?: string;
+  metrics?: string;
+  objective?: string;
+  offset?: number;
+  order_by?: string;
+  order_dir?: string;
+  search?: string;
+  start_date?: string;
+  status?: string;
+  timezone?: string;
+  type?: string;
+}
+
+function adsAnalyticsQuery(p: AdsAnalyticsParams): Record<string, unknown> {
+  return {
+    account_id: p.account_id,
+    ad_group_id: p.ad_group_id,
+    ad_set_id: p.ad_set_id,
+    breakdown: p.breakdown,
+    campaign_id: p.campaign_id,
+    country: p.country,
+    end_date: p.end_date,
+    language: p.language,
+    level: p.level,
+    limit: p.limit,
+    match_type: p.match_type,
+    metric: p.metric,
+    metrics: p.metrics,
+    objective: p.objective,
+    offset: p.offset,
+    order_by: p.order_by,
+    order_dir: p.order_dir,
+    search: p.search,
+    start_date: p.start_date,
+    status: p.status,
+    timezone: p.timezone,
+    type: p.type,
+  };
+}
+
+
+// Meta Ads
+
+/** List connected Meta ad accounts */
+export function metaAdsAnalyticsAccounts(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/meta-ads/accounts`, adsAnalyticsQuery(params));
+}
+
+/** Ad sets with per-ad-set metrics */
+export function metaAdsAnalyticsAdSets(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/meta-ads/ad-sets`, adsAnalyticsQuery(params));
+}
+
+/** Ads with per-ad metrics and creative details */
+export function metaAdsAnalyticsAds(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/meta-ads/ads`, adsAnalyticsQuery(params));
+}
+
+/** AI-generated insights for an ad account */
+export function metaAdsAnalyticsAiInsights(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/meta-ads/ai-insights`, adsAnalyticsQuery(params));
+}
+
+/** Campaigns with per-campaign metrics */
+export function metaAdsAnalyticsCampaigns(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/meta-ads/campaigns`, adsAnalyticsQuery(params));
+}
+
+/** Audience breakdown by age and gender, region or country */
+export function metaAdsAnalyticsDemographics(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/meta-ads/demographics`, adsAnalyticsQuery(params));
+}
+
+/** One metric broken down by campaign, ad set or ad */
+export function metaAdsAnalyticsPerformanceByLevel(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/meta-ads/performance-by-level`, adsAnalyticsQuery(params));
+}
+
+/** One metric broken down by publisher platform and placement */
+export function metaAdsAnalyticsPerformanceByPlacement(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/meta-ads/performance-by-placement`, adsAnalyticsQuery(params));
+}
+
+/** Daily time series for one or more metrics */
+export function metaAdsAnalyticsPerformanceOverTime(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/meta-ads/performance-over-time`, adsAnalyticsQuery(params));
+}
+
+/** Results and spend grouped by campaign objective */
+export function metaAdsAnalyticsResultsByObjective(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/meta-ads/results-by-objective`, adsAnalyticsQuery(params));
+}
+
+/** Meta Ads headline KPIs — current vs previous period */
+export function metaAdsAnalyticsSummary(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/meta-ads/summary`, adsAnalyticsQuery(params));
+}
+
+
+// Google Ads
+
+/** List connected Google Ads accounts */
+export function googleAdsAnalyticsAccounts(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/google-ads/accounts`, adsAnalyticsQuery(params));
+}
+
+/** Ad groups with per-ad-group metrics */
+export function googleAdsAnalyticsAdGroups(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/google-ads/ad-groups`, adsAnalyticsQuery(params));
+}
+
+/** Ads with per-ad metrics */
+export function googleAdsAnalyticsAds(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/google-ads/ads`, adsAnalyticsQuery(params));
+}
+
+/** AI-generated insights for an ad account */
+export function googleAdsAnalyticsAiInsights(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/google-ads/ai-insights`, adsAnalyticsQuery(params));
+}
+
+/** Campaigns with per-campaign metrics */
+export function googleAdsAnalyticsCampaigns(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/google-ads/campaigns`, adsAnalyticsQuery(params));
+}
+
+/** Conversion actions configured on the account */
+export function googleAdsAnalyticsConversionActions(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/google-ads/conversion-actions`, adsAnalyticsQuery(params));
+}
+
+/** Conversion funnel — impressions through to conversions */
+export function googleAdsAnalyticsConversionFunnel(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/google-ads/conversion-funnel`, adsAnalyticsQuery(params));
+}
+
+/** Conversions grouped by conversion action */
+export function googleAdsAnalyticsConversionsByAction(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/google-ads/conversions/by-action`, adsAnalyticsQuery(params));
+}
+
+/** Conversions over time */
+export function googleAdsAnalyticsConversionsOverTime(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/google-ads/conversions/over-time`, adsAnalyticsQuery(params));
+}
+
+/** Audience breakdown by age, gender and location */
+export function googleAdsAnalyticsDemographics(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/google-ads/demographics`, adsAnalyticsQuery(params));
+}
+
+/** Keywords with per-keyword metrics */
+export function googleAdsAnalyticsKeywords(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/google-ads/keywords`, adsAnalyticsQuery(params));
+}
+
+/** One metric broken down by campaign, ad group or ad */
+export function googleAdsAnalyticsPerformanceByLevel(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/google-ads/performance-by-level`, adsAnalyticsQuery(params));
+}
+
+/** One metric broken down by campaign type */
+export function googleAdsAnalyticsPerformanceByType(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/google-ads/performance-by-type`, adsAnalyticsQuery(params));
+}
+
+/** Daily time series for one or more metrics */
+export function googleAdsAnalyticsPerformanceOverTime(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/google-ads/performance-over-time`, adsAnalyticsQuery(params));
+}
+
+/** Search terms with per-term metrics */
+export function googleAdsAnalyticsSearchTerms(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/google-ads/search-terms`, adsAnalyticsQuery(params));
+}
+
+/** Shopping campaign product performance */
+export function googleAdsAnalyticsShopping(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/google-ads/shopping`, adsAnalyticsQuery(params));
+}
+
+/** Google Ads headline KPIs — current vs previous period */
+export function googleAdsAnalyticsSummary(
+  c: Client,
+  workspaceId: string,
+  params: AdsAnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/google-ads/summary`, adsAnalyticsQuery(params));
+}
+
+
+// ── campaign & label analytics ────────────────────────────
+
+/**
+ * Campaign & label reports POST their filters instead of taking query params:
+ * the campaign/label lists and the per-network account lists are
+ * variable-length arrays, which do not encode in a query string.
+ */
+export interface CampaignLabelAnalyticsParams {
+  campaigns?: string[];
+  end_date?: string;
+  facebook_accounts?: string[];
+  instagram_accounts?: string[];
+  labels?: string[];
+  limit?: number;
+  linkedin_accounts?: string[];
+  pinterest_accounts?: string[];
+  /**
+   * Networks to include. An array, like every other list filter here — the
+   * endpoint validates `platforms.*` against the supported network names and
+   * rejects a comma-separated string. The CLI already sends an array (the
+   * command spec declares the flag as `array`, so yargs repeats it); this type
+   * was the odd one out and would have let a programmatic caller pass a string
+   * that typechecks and then fails validation upstream.
+   */
+  platforms?: string[];
+  search?: string;
+  sort_by?: string;
+  sort_order?: string;
+  start_date?: string;
+  tiktok_accounts?: string[];
+  timezone?: string;
+  youtube_accounts?: string[];
+}
+
+function campaignLabelBody(p: CampaignLabelAnalyticsParams): Record<string, unknown> {
+  return {
+    campaigns: p.campaigns,
+    end_date: p.end_date,
+    facebook_accounts: p.facebook_accounts,
+    instagram_accounts: p.instagram_accounts,
+    labels: p.labels,
+    limit: p.limit,
+    linkedin_accounts: p.linkedin_accounts,
+    pinterest_accounts: p.pinterest_accounts,
+    platforms: p.platforms,
+    search: p.search,
+    sort_by: p.sort_by,
+    sort_order: p.sort_order,
+    start_date: p.start_date,
+    tiktok_accounts: p.tiktok_accounts,
+    timezone: p.timezone,
+    youtube_accounts: p.youtube_accounts,
+  };
+}
+
+/** Per-campaign and per-label totals, current vs previous period */
+export function campaignLabelAnalyticsBreakdown(
+  c: Client,
+  workspaceId: string,
+  params: CampaignLabelAnalyticsParams,
+) {
+  return c.post<any>(`/workspaces/${workspaceId}/analytics/campaigns-labels/breakdown`, {
+    json: campaignLabelBody(params),
+  });
+}
+
+/** Daily time series per campaign and per label */
+export function campaignLabelAnalyticsInsightsBreakdown(
+  c: Client,
+  workspaceId: string,
+  params: CampaignLabelAnalyticsParams,
+) {
+  return c.post<any>(`/workspaces/${workspaceId}/analytics/campaigns-labels/insights-breakdown`, {
+    json: campaignLabelBody(params),
+  });
+}
+
+/** Per-post table for the selected campaigns & labels */
+export function campaignLabelAnalyticsPosts(
+  c: Client,
+  workspaceId: string,
+  params: CampaignLabelAnalyticsParams,
+) {
+  return c.post<any>(`/workspaces/${workspaceId}/analytics/campaigns-labels/posts`, {
+    json: campaignLabelBody(params),
+  });
+}
+
+/** Campaign & label summary KPIs — current vs previous period */
+export function campaignLabelAnalyticsSummary(
+  c: Client,
+  workspaceId: string,
+  params: CampaignLabelAnalyticsParams,
+) {
+  return c.post<any>(`/workspaces/${workspaceId}/analytics/campaigns-labels/summary`, {
+    json: campaignLabelBody(params),
+  });
+}
+
+/** Top 5 posts per network for the selected campaigns & labels */
+export function campaignLabelAnalyticsTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: CampaignLabelAnalyticsParams,
+) {
+  return c.post<any>(`/workspaces/${workspaceId}/analytics/campaigns-labels/top-posts`, {
+    json: campaignLabelBody(params),
+  });
+}
+
+
+// ── youtube (additions) ───────────────────────────────────
+
+/** Publishing behaviour breakdown by content type */
+export function youtubeAnalyticsPublishingBehaviour(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/youtube/publishing-behaviour`, analyticsQuery(params));
+}
+
 
 // ─────────────────────────────────────────────────────────────────
 // Scheduling — optimal posting times ("best time to post").

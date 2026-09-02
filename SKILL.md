@@ -1,6 +1,6 @@
 ---
 name: contentstudio
-description: ContentStudio is a tool to schedule social-media posts and manage the social inbox across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile. Use when the user wants to list/create/delete/approve posts, find the best time to post, generate or edit images with AI, read and reply to DMs, comments and reviews, manage media, or audit workspaces, accounts, campaigns, labels, categories, or team-members on their ContentStudio account.
+description: ContentStudio is a tool to schedule social-media posts, manage the social inbox, and pull performance analytics across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile. Use when the user wants to list/create/delete/approve posts, find the best time to post, generate or edit images with AI, read and reply to DMs, comments and reviews, manage media, audit workspaces, accounts, campaigns, labels, categories, or team-members, or pull analytics reports (top posts, engagement, impressions, follower growth, AI insights, etc.) on their ContentStudio account.
 version: 1.3.0
 homepage: https://api.contentstudio.io/guide
 metadata: {"openclaw":{"emoji":"📅","requires":{"bins":["contentstudio"],"env":["CONTENTSTUDIO_API_KEY"]}}}
@@ -219,7 +219,7 @@ All commands are invoked as `contentstudio <group>:<command>`.
 | `accounts:connect <platform> --reconnect --account-id <id>` | Refresh an expired/invalid account |
 | `accounts:add-bluesky --handle <h> --app-password <p>` | Connect a Bluesky account (no browser — uses app password) |
 | `accounts:add-facebook-group --name <n> [--image <url>]` | Manually add a Facebook Group connection |
-| `accounts:remove <account_id>` | Remove (disconnect) a social account. `account_id` is the account's `_id` from `accounts:list`. Requires the `save_social` permission (403 otherwise). |
+| `accounts:remove <account_id>` | Remove (disconnect) a social account. `account_id` is the account's `id` from `accounts:list`. Requires the `save_social` permission (403 otherwise). |
 
 `--platform` values for `accounts:list` filter: `facebook`, `linkedin`, `twitter`, `instagram`, `youtube`, `tiktok`, `pinterest`, `gmb`.
 
@@ -243,6 +243,8 @@ All commands are invoked as `contentstudio <group>:<command>`.
 | `posts:create -c "text" -i <twitter_account> -t draft --twitter '<json>'` | Create a Twitter/X threaded-tweet post (max 10 tweets) |
 | `posts:create -c "text" -i <account> -t draft --first-comment "..." --first-comment-account <id>` | Create a post with a first comment |
 | `posts:create -c "text" -i <linkedin_account> -t draft --post-type poll --linkedin-options '<json>'` | Create a LinkedIn poll post (text-only) |
+| `posts:create -c "text" -i <ig_account> -t draft --post-type reel --video-url <url> --instagram-trial-reel` | Create an Instagram trial reel (shown to non-followers first) |
+| `posts:create -c "common text" -i <fb_account> -i <tiktok_account> -t draft -m <img_url> --platform-overrides '<json>'` | Same post to multiple platforms with a per-platform content override |
 | `posts:create --body /path/to/body.json` | Create a post with full JSON body |
 | `posts:update <post_id> [same flags as posts:create]` | Update an existing post (same body). Rejected (422) once the post is published/processing |
 | `posts:delete <post_id> [--delete-from-social]` | Delete a post |
@@ -266,10 +268,21 @@ All commands are invoked as `contentstudio <group>:<command>`.
   - Shape: `{ "title"?: <string>, "poll"?: { "question": <≤140>, "options": <string[2..4], each ≤30>, "duration": "ONE_DAY" | "THREE_DAYS" | "SEVEN_DAYS" | "FOURTEEN_DAYS" } }`
   - A **poll** must be paired with `--post-type poll` and text-only content (no images/video). Backend validates and 422s on violations.
 - `--facebook-collaborator <user_id>` (repeatable, **max 10**) → `facebook_options.collaborators` (Facebook accounts). Merges with `--facebook-carousel` / `--facebook-background-id`.
-- `--instagram-collaborator <user_id>` (repeatable, **max 3**) → `instagram_options.collaborators` (Instagram accounts).
+- `--instagram-collaborator <user_id>` (repeatable, **max 3**) → `instagram_options.collaborators` (Instagram accounts). Rejected (422) together with `--instagram-trial-reel`.
+- `--instagram-trial-reel` (boolean, default `false`) → `instagram_options.trial_reel.enabled`. Publishes an Instagram **trial reel** — shown to non-followers first, so it does not appear on the profile grid or in follower feeds.
+  - `--instagram-trial-reel-graduation SS_PERFORMANCE|MANUAL` (default `SS_PERFORMANCE`) → `instagram_options.trial_reel.graduation_strategy`. `SS_PERFORMANCE` lets Instagram auto-graduate it to followers if it performs well; `MANUAL` requires graduating it by hand in the Instagram app (Instagram has no API for that).
+  - Requires `--post-type reel` **exactly** (not `feed+reel`) and a video — feed/carousel/story are rejected. The CLI does not pre-validate this; the backend returns 422.
+  - **Rejected (422) together with `--instagram-collaborator`.** Share-to-story is silently dropped (not rejected) when combined with a trial reel.
+  - Not available when the workspace posts to Instagram via the mobile app (`instagram_posting_option=mobile`).
+- `--platform-overrides '<json>'` → `platform_overrides` (top-level, works across any platform in the post). Pass a JSON **object** keyed by platform (`facebook`, `instagram`, `twitter`, `linkedin`, `pinterest`, `youtube`, `tiktok`, `gmb`, `tumblr`, `threads`, `bluesky`, `telegram`); the CLI parses it locally (invalid JSON → `ConfigError`) and sends it verbatim.
+  - Shape per platform: `{ "content": { "text"?: <string>, "post_type"?: <string>, "media"?: { "images"?: <url[] ≤10>, "video"?: <url> } } }`.
+  - `text` and `post_type` each merge **independently** with the common top-level `content` — an override with only `media` still inherits the common `text`/`post_type`.
+  - `media` is **atomic**: if an override's `content` includes a `media` key at all, that platform's media is defined ENTIRELY by the override (no per-field fallback to the common media for whichever of `images`/`video` it omits). Omitting `media` entirely inherits the common `content.media` wholesale. This exists because some platforms (e.g. TikTok) can never support mixed images+video.
+  - Omitting `--platform-overrides` entirely publishes the same top-level `content` to every targeted platform.
+  - Override images are URLs only (no `media_ids`) and follow the same validation as the top-level media (max 10 images, no mixing images+video in one override).
 - **Approval — two mutually-exclusive systems (pass only one):**
   - **Legacy** `--approver <user_id>` (repeatable) + `--approve-option anyone|everyone` (default `anyone`) + `--approval-notes "..."` → builds `approval: {approvers, approve_option, notes}` only when at least one approver is given. The post creator cannot be an approver. `anyone` = any single approver; `everyone` = all must approve.
-  - **Workflow** `--approval-workflow-id <id>` + `--approval-workflow-notes "..."` → `approval_workflow: {workflow_id, notes?}` — ATTACH a workflow (works on both create and update). Get the id from `approval-workflows:list` (its `_id`).
+  - **Workflow** `--approval-workflow-id <id>` + `--approval-workflow-notes "..."` → `approval_workflow: {workflow_id, notes?}` — ATTACH a workflow (works on both create and update). Get the id from `approval-workflows:list` (its `id`).
   - **Workflow (update only)** `--approval-workflow-action restart|resume|renotify_current|keep|remove` + `--approval-workflow-notes "..."` → `approval_workflow: {workflow_action, notes?}` — mutate the already-attached workflow. Only valid on `posts:update`.
   - **Exactly one** of `--approval-workflow-id` / `--approval-workflow-action`, and `--approver` cannot be combined with either `--approval-workflow-*` flag. The CLI errors locally (`ConfigError`) if these rules are broken.
 - `--facebook-background-id <id>` → `facebook_options.facebook_background_id` (plain-text Facebook posts only; rejected if media is attached). Get a valid id from `facebook:text-backgrounds`.
@@ -286,7 +299,7 @@ All commands are invoked as `contentstudio <group>:<command>`.
 - `--first-comment "<message>"` → `first_comment` (≤2000 chars). The CLI builds `first_comment: { message, accounts? }`. The accounts are supplied with `--first-comment-account <id>` (repeatable).
   - `--first-comment-account <id>` (repeatable) → `first_comment.accounts`. **The backend REQUIRES at least one account when a `--first-comment` message is given, and the accounts must be a subset of the post's main `--account` IDs.** The CLI does not hard-block client-side — if you omit `--first-comment-account`, the backend returns a 422.
 
-(`--facebook-carousel`, `--facebook-collaborator`, `--instagram-collaborator`, `--linkedin-options`, `--threads`, and `--twitter` only apply in shortcut mode. The `--body` JSON mode already supports `facebook_options` (carousel + collaborators), `instagram_options.collaborators`, `linkedin_options`, `threads_options`, `twitter_options`, `first_comment`, `approval`, and `approval_workflow` natively — use it for posts that mix multiple platform option blocks.)
+(`--facebook-carousel`, `--facebook-collaborator`, `--instagram-collaborator`, `--instagram-trial-reel`, `--instagram-trial-reel-graduation`, `--linkedin-options`, `--platform-overrides`, `--threads`, and `--twitter` only apply in shortcut mode. The `--body` JSON mode already supports `facebook_options` (carousel + collaborators), `instagram_options` (`collaborators` + `trial_reel`), `linkedin_options`, `threads_options`, `twitter_options`, `first_comment`, `approval`, `approval_workflow`, and top-level `platform_overrides` natively — use it for posts that mix multiple platform option blocks.)
 
 The `posts:list` payload now includes `linkedin_options` and `approval_workflow` per post (in addition to the existing fields) — they surface automatically in the `--json` output.
 
@@ -387,9 +400,9 @@ Errors: 422 for unknown accounts or a workspace with no connected accounts; 502 
 | `categories:list` | List content categories |
 | `labels:list` | List labels |
 | `team:list` | List workspace team members |
-| `approval-workflows:list` | List approval workflows (use an item's `_id` as `--approval-workflow-id`) |
+| `approval-workflows:list` | List approval workflows (use an item's `id` as `--approval-workflow-id`) |
 
-Each `approval-workflows:list` item is `{ _id, name, is_default, levels: [{ level_number, title, rule, members: [{ user_id }] }] }`. Use `_id` as `posts:create` / `posts:update`'s `--approval-workflow-id`.
+Each `approval-workflows:list` item is `{ id, name, is_default, levels: [{ level_number, title, rule, members: [{ user_id }] }] }`. Use `id` as `posts:create` / `posts:update`'s `--approval-workflow-id`.
 
 ### Labels (write)
 
@@ -417,7 +430,7 @@ For labels and campaigns: `--name` ≤100 chars; `--color` is one of the enum va
 | `team:update <member_id> --role <r> --permissions '<json>' [--membership]` | Update a member's role/permissions |
 | `team:remove <member_id> [--confirmed]` | Remove a member |
 
-- `member_id` is the **membership id** — the `_id` / `member_id` field from `team:list` (not the user_id).
+- `member_id` is the **membership id** — the `member_id` field from `team:list` (not the user's `id`, a distinct field).
 - `--role` (required): `admin`, `approver`, or `collaborator`.
 - `--email` (required for `team:add`): a single email address.
 - `--membership` (optional): `team` (internal) or `client` (external; hidden from internal notes). Default `team`.
@@ -437,7 +450,7 @@ For labels and campaigns: `--name` ≤100 chars; `--color` is one of the enum va
 |---------|---------|
 | `accounts:remove <account_id> [--dry-run]` | Remove (disconnect) a social account (`DELETE /workspaces/{w}/accounts/{account_id}`) |
 
-- `account_id` is the account's `_id` from `accounts:list`.
+- `account_id` is the account's `id` from `accounts:list`.
 - Requires the `save_social` permission — callers without it get 403.
 - Errors: 401 (bad/missing API key), 403 (missing `save_social`), 404 (account not found in the workspace), 422 (removal failed). Success is 200 with an empty `data` array.
 - Mutating command — preview with `--dry-run` and confirm the workspace first.
@@ -599,6 +612,245 @@ inbox service is temporarily unreachable rather than a missing item — retry
 after a short backoff. An empty `inbox:list` result is a successful empty
 read: report it as "no matching conversations", not "not found".
 
+### Analytics
+
+Read-only performance reports across Facebook, Instagram, YouTube, Pinterest,
+LinkedIn, Google Business Profile, TikTok, Twitter/X, **Meta Ads** and
+**Google Ads**, plus cross-network Campaigns & Labels reports (133 commands
+total, one per backend endpoint — no generic passthrough).
+
+Most commands need `--platform-id` (the connected account, from
+`accounts:list`) plus either a date range or a native post id. The ads and
+campaign/label families are the exceptions — see below:
+
+- **Date-range reports** — `--start-date` / `--end-date` (`YYYY-MM-DD`,
+  both required). Optional on most: `--timezone` (IANA name, default UTC),
+  `--date` (alternative `'YYYY-MM-DD - YYYY-MM-DD'` form that overrides the
+  range), `--limit` / `--offset`, `--order-by` (choices vary per command —
+  check `--help`), and array filters like `--media-type`, `--hashtags`,
+  `--entity-type` (repeat the flag for multiple values).
+- **Single-item lookups** (`*-single-post`, `*-single-pin`, `*-single-tweet`,
+  `*-single-video`) — `--platform-id` + `--post-id` (the platform-native id,
+  not a ContentStudio internal id). No date range.
+- **AI insights** commands (`*-ai-insights`) additionally take `--type`
+  (`aiInsightsSummary` for the compact card, `aiInsightsDetailed` for the full
+  report) and `--language` (ISO 639-1, default `en`). Both ads platforms have
+  one too.
+- **Ads reports** (`analytics:meta-ads-*`, `analytics:google-ads-*`) take
+  `--account-id` — an *ad* account (`act_…` on Meta, a customer id on Google,
+  from `analytics:meta-ads-accounts` / `analytics:google-ads-accounts`) — not
+  `--platform-id`. Table commands add `--limit`/`--offset`, `--search`,
+  `--order-by`/`--order-dir` and id filters (`--campaign-id`, `--ad-set-id`,
+  `--ad-group-id`); chart commands add `--metric` and `--level`.
+  `analytics:*-ads-accounts` needs no account at all — it is how you find one.
+- **Campaigns & Labels** (`analytics:campaigns-labels-*`) are the only POST
+  reports: the filters are lists, so repeat the flag —
+  `--campaigns <id> --campaigns <id>`, `--labels <id>`, and one account list
+  per network (`--facebook-accounts`, `--instagram-accounts`, …). Only
+  `--start-date`/`--end-date` are required.
+
+Run `contentstudio analytics:<command> --help` to see the exact options for
+any one command — required vs. optional and enum choices differ per endpoint.
+
+Every analytics command is read-only — the campaign/label ones are POSTs only
+because their filters are arrays — so none of them take `--dry-run` (that flag
+only exists on mutating commands elsewhere in this CLI).
+
+**If a command returns `ANALYTICS_UPSTREAM_ERROR`** (HTTP 200 with
+`status: false`, often `upstream_status: 401`), that is the ContentStudio
+backend's own analytics pipeline failing upstream — not a bad request. Report
+it as "the analytics service is temporarily unavailable," don't retry the
+exact same call in a loop, and don't treat it as evidence the account/workspace
+is wrong.
+
+**Facebook (15)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:facebook-active-users` | Facebook active users by hour and day of week | --platform-id, --start-date, --end-date |
+| `analytics:facebook-ai-insights` | Facebook AI-generated insights | --platform-id, --start-date, --end-date |
+| `analytics:facebook-audience-growth` | Facebook fan / follower growth over time | --platform-id, --start-date, --end-date |
+| `analytics:facebook-audience-location` | Facebook audience location (country/city breakdown) | --platform-id, --start-date, --end-date |
+| `analytics:facebook-demographics` | Facebook audience age / gender / country / city demographics | --platform-id, --start-date, --end-date |
+| `analytics:facebook-demographics-overview` | Facebook demographics overview widget | --platform-id, --start-date, --end-date |
+| `analytics:facebook-engagement` | Facebook page engagements over time | --platform-id, --start-date, --end-date |
+| `analytics:facebook-get-top-posts` | Facebook top posts with media_type filter | --platform-id, --start-date, --end-date |
+| `analytics:facebook-impressions` | Facebook page impressions over time | --platform-id, --start-date, --end-date |
+| `analytics:facebook-overview-top-posts` | Facebook top posts (overview widget) | --platform-id, --start-date, --end-date |
+| `analytics:facebook-publishing-behaviour` | Facebook engagement by impression type over time | --platform-id, --start-date, --end-date |
+| `analytics:facebook-reels` | Facebook Reels performance over time | --platform-id, --start-date, --end-date |
+| `analytics:facebook-single-post` | Get a single Facebook post by ID | --platform-id, --post-id |
+| `analytics:facebook-summary` | Facebook summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:facebook-video-insights` | Facebook video view time and plays over time | --platform-id, --start-date, --end-date |
+
+**Instagram (15)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:instagram-active-users` | Instagram active users by hour and day of week | --platform-id, --start-date, --end-date |
+| `analytics:instagram-ai-insights` | Instagram AI-generated insights | --platform-id, --start-date, --end-date |
+| `analytics:instagram-audience-growth` | Instagram follower growth over time | --platform-id, --start-date, --end-date |
+| `analytics:instagram-country-city` | Instagram audience country / city breakdown | --platform-id, --start-date, --end-date |
+| `analytics:instagram-demographics-age` | Instagram audience age / gender breakdown | --platform-id, --start-date, --end-date |
+| `analytics:instagram-engagement` | Instagram post engagement over time | --platform-id, --start-date, --end-date |
+| `analytics:instagram-get-top-posts` | Instagram top posts with hashtag filter | --platform-id, --start-date, --end-date |
+| `analytics:instagram-hashtags` | Instagram top hashtags by engagement | --platform-id, --start-date, --end-date |
+| `analytics:instagram-impressions` | Instagram post impressions over time | --platform-id, --start-date, --end-date |
+| `analytics:instagram-publishing-behaviour` | Instagram post engagement by media type over time | --platform-id, --start-date, --end-date |
+| `analytics:instagram-reels-performance` | Instagram Reels engagement and watch time over time | --platform-id, --start-date, --end-date |
+| `analytics:instagram-single-post` | Get a single Instagram post by ID | --platform-id, --post-id |
+| `analytics:instagram-stories-performance` | Instagram stories impressions, reach, and interactions over time | --platform-id, --start-date, --end-date |
+| `analytics:instagram-summary` | Instagram summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:instagram-top-posts` | Instagram top-performing posts | --platform-id, --start-date, --end-date |
+
+**YouTube (20)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:youtube-ai-insights` | YouTube AI-generated insights | --platform-id, --start-date, --end-date |
+| `analytics:youtube-demographics` | YouTube audience demographics — age & gender, device type, subscriber change | --platform-id, --start-date, --end-date |
+| `analytics:youtube-engagement-trend` | YouTube cumulative engagement trend over time | --platform-id, --start-date, --end-date |
+| `analytics:youtube-engagement-trend-daily` | YouTube daily-delta engagement trend | --platform-id, --start-date, --end-date |
+| `analytics:youtube-find-video` | YouTube traffic source breakdown (how viewers found videos) | --platform-id, --start-date, --end-date |
+| `analytics:youtube-least-posts` | YouTube least-performing videos ordered by views and engagement | --platform-id, --start-date, --end-date |
+| `analytics:youtube-performance-schedule` | YouTube video performance metrics grouped by publish date | --platform-id, --start-date, --end-date |
+| `analytics:youtube-publishing-behaviour` | YouTube posts published over time and content-type breakdown | --platform-id, --start-date, --end-date |
+| `analytics:youtube-single-video` | Get a single YouTube video by ID | --platform-id, --post-id |
+| `analytics:youtube-sorted-top-posts` | YouTube videos sorted by a configurable metric | --platform-id, --start-date, --end-date |
+| `analytics:youtube-subscriber-trend` | YouTube cumulative subscriber trend over time | --platform-id, --start-date, --end-date |
+| `analytics:youtube-subscriber-trend-daily` | YouTube daily-delta subscriber trend | --platform-id, --start-date, --end-date |
+| `analytics:youtube-summary` | YouTube summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:youtube-top-geographies` | YouTube top geographies — countries pre-sorted by views, watch time, view duration and view percentage | --platform-id, --start-date, --end-date |
+| `analytics:youtube-top-posts` | YouTube top videos ordered by views and engagement | --platform-id, --start-date, --end-date |
+| `analytics:youtube-video-sharing` | YouTube sharing platform breakdown | --platform-id, --start-date, --end-date |
+| `analytics:youtube-views-trend` | YouTube cumulative views split by subscriber / non-subscriber | --platform-id, --start-date, --end-date |
+| `analytics:youtube-views-trend-daily` | YouTube daily-delta views trend | --platform-id, --start-date, --end-date |
+| `analytics:youtube-watch-time-trend` | YouTube cumulative watch time split by subscriber / non-subscriber | --platform-id, --start-date, --end-date |
+| `analytics:youtube-watch-time-trend-daily` | YouTube daily-delta watch time trend | --platform-id, --start-date, --end-date |
+
+**Pinterest (14)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:pinterest-ai-insights` | Pinterest AI-generated insights | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-engagement-trend` | Pinterest cumulative engagement trend over time | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-engagement-trend-daily` | Pinterest daily-delta engagement trend | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-follower-trend` | Pinterest cumulative follower trend over time | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-follower-trend-daily` | Pinterest daily-delta follower trend | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-impressions-trend` | Pinterest cumulative impressions trend over time | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-impressions-trend-daily` | Pinterest daily-delta impressions trend | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-pin-performance` | Pinterest pin performance metrics over time | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-pin-posting` | Pinterest cumulative pin posting activity over time | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-pin-posting-daily` | Pinterest daily-delta pin posting activity | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-pin-rollup` | Pinterest pin performance rollup — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-single-pin` | Get a single Pinterest pin by ID | --platform-id, --post-id |
+| `analytics:pinterest-summary` | Pinterest summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-top-pins` | Pinterest top-performing and least-performing pins | --platform-id, --start-date, --end-date |
+
+**LinkedIn (11)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:linkedin-ai-insights` | LinkedIn AI-generated insights | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-audience-growth` | LinkedIn follower growth over time | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-followers-demographics` | LinkedIn follower demographics by industry, country, and other dimensions | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-get-top-posts` | LinkedIn top posts with hashtag and media type filter | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-hashtags` | LinkedIn top hashtags by engagement | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-page-views` | LinkedIn page views over time (desktop vs mobile) | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-posts-per-days` | LinkedIn post count distribution by day of week | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-publishing-behaviour` | LinkedIn post engagement by media type over time | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-single-post` | Get a single LinkedIn post by ID | --platform-id, --post-id |
+| `analytics:linkedin-summary` | LinkedIn summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-top-posts` | LinkedIn top-performing posts | --platform-id, --start-date, --end-date |
+
+**Google Business Profile (GMB) (10)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:gmb-actions` | GMB customer actions (clicks, calls, directions) over time | --platform-id, --start-date, --end-date |
+| `analytics:gmb-ai-insights` | GMB AI-generated insights | --platform-id, --start-date, --end-date |
+| `analytics:gmb-impressions` | GMB impressions breakdown by channel and device over time | --platform-id, --start-date, --end-date |
+| `analytics:gmb-media-activity` | GMB media (photo/video) activity over time | --platform-id, --start-date, --end-date |
+| `analytics:gmb-publishing-behavior` | GMB posts published over time and topic-type breakdown | --platform-id, --start-date, --end-date |
+| `analytics:gmb-reviews` | GMB reviews — ratings, distribution, and daily activity | --platform-id, --start-date, --end-date |
+| `analytics:gmb-search-keywords` | GMB top search keywords that surfaced the listing | --platform-id, --start-date, --end-date |
+| `analytics:gmb-single-post` | Get a single GMB post by ID | --platform-id, --post-id |
+| `analytics:gmb-summary` | GMB summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:gmb-top-posts` | GMB top-performing posts | --platform-id, --start-date, --end-date |
+
+**TikTok (8)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:tiktok-ai-insights` | TikTok AI-generated insights | --platform-id, --start-date, --end-date |
+| `analytics:tiktok-engagement-trend` | TikTok daily engagement trend over time | --platform-id, --start-date, --end-date |
+| `analytics:tiktok-follower-trend` | TikTok follower and views trend over time | --platform-id, --start-date, --end-date |
+| `analytics:tiktok-publishing-behaviour` | TikTok daily post volume and engagement breakdown over time | --platform-id, --start-date, --end-date |
+| `analytics:tiktok-single-post` | Get a single TikTok post by ID | --platform-id, --post-id |
+| `analytics:tiktok-sorted-top-posts` | TikTok posts sorted by a configurable metric | --platform-id, --start-date, --end-date |
+| `analytics:tiktok-summary` | TikTok summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:tiktok-top-posts` | TikTok top and least performing posts | --platform-id, --start-date, --end-date |
+
+**Twitter/X (7)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:twitter-credits-used` | Twitter API credits usage for the workspace | --platform-id, --start-date, --end-date |
+| `analytics:twitter-engagement-impression` | Twitter engagement and impression trend over time | --platform-id, --start-date, --end-date |
+| `analytics:twitter-followers-trend` | Twitter follower trend over time | --platform-id, --start-date, --end-date |
+| `analytics:twitter-least-tweets` | Twitter least-performing tweets | --platform-id, --start-date, --end-date |
+| `analytics:twitter-single-tweet` | Get a single Twitter/X tweet by ID | --platform-id, --post-id |
+| `analytics:twitter-summary` | Twitter summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:twitter-top-tweets` | Twitter top-performing tweets | --platform-id, --start-date, --end-date |
+
+**Meta Ads (11)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:meta-ads-accounts` | List connected Meta ad accounts | — |
+| `analytics:meta-ads-ad-sets` | Ad sets with per-ad-set metrics | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-ads` | Ads with per-ad metrics and creative details | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-ai-insights` | AI-generated insights for an ad account | --account-id, --start-date, --end-date, --type |
+| `analytics:meta-ads-campaigns` | Campaigns with per-campaign metrics | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-demographics` | Audience breakdown by age and gender, region or country | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-performance-by-level` | One metric broken down by campaign, ad set or ad | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-performance-by-placement` | One metric broken down by publisher platform and placement | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-performance-over-time` | Daily time series for one or more metrics | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-results-by-objective` | Results and spend grouped by campaign objective | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-summary` | Meta Ads headline KPIs — current vs previous period | --account-id, --start-date, --end-date |
+
+**Google Ads (17)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:google-ads-accounts` | List connected Google Ads accounts | — |
+| `analytics:google-ads-ad-groups` | Ad groups with per-ad-group metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-ads` | Ads with per-ad metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-ai-insights` | AI-generated insights for an ad account | --account-id, --start-date, --end-date, --type |
+| `analytics:google-ads-campaigns` | Campaigns with per-campaign metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-conversion-actions` | Conversion actions configured on the account | --account-id, --start-date, --end-date |
+| `analytics:google-ads-conversion-funnel` | Conversion funnel — impressions through to conversions | --account-id, --start-date, --end-date |
+| `analytics:google-ads-conversions-by-action` | Conversions grouped by conversion action | --account-id, --start-date, --end-date |
+| `analytics:google-ads-conversions-over-time` | Conversions over time | --account-id, --start-date, --end-date |
+| `analytics:google-ads-demographics` | Audience breakdown by age, gender and location | --account-id, --start-date, --end-date |
+| `analytics:google-ads-keywords` | Keywords with per-keyword metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-performance-by-level` | One metric broken down by campaign, ad group or ad | --account-id, --start-date, --end-date |
+| `analytics:google-ads-performance-by-type` | One metric broken down by campaign type | --account-id, --start-date, --end-date |
+| `analytics:google-ads-performance-over-time` | Daily time series for one or more metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-search-terms` | Search terms with per-term metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-shopping` | Shopping campaign product performance | --account-id, --start-date, --end-date |
+| `analytics:google-ads-summary` | Google Ads headline KPIs — current vs previous period | --account-id, --start-date, --end-date |
+
+**Campaigns & Labels (5)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:campaigns-labels-breakdown` | Per-campaign and per-label totals, current vs previous period | --start-date, --end-date |
+| `analytics:campaigns-labels-insights-breakdown` | Daily time series per campaign and per label | --start-date, --end-date |
+| `analytics:campaigns-labels-posts` | Per-post table for the selected campaigns & labels | --start-date, --end-date |
+| `analytics:campaigns-labels-summary` | Campaign & label summary KPIs — current vs previous period | --start-date, --end-date |
+| `analytics:campaigns-labels-top-posts` | Top 5 posts per network for the selected campaigns & labels | --start-date, --end-date |
+
 ---
 
 ## Examples
@@ -607,7 +859,7 @@ read: report it as "no matching conversations", not "not found".
 
 ```bash
 contentstudio --json auth:whoami
-# → {"ok": true, "data": {"_id": "...", "email": "...", "full_name": "..."}}
+# → {"ok": true, "data": {"id": "...", "email": "...", "full_name": "..."}}
 ```
 
 ### Find a Facebook account to post to
@@ -782,7 +1034,7 @@ The top-level `-c / --content` is the lead tweet; each `--twitter` item is a fol
 
 **14. Full-control body via `--body <file.json>`** (any field the shortcut flags don't cover)
 
-Use `--body` when you need fields beyond the shortcut flags (per-platform `overrides`, `twitter_options`/`threads_options`, `timezone`, `hide_client`, etc.). The JSON is sent verbatim, so build it for the platform(s) your `accounts` belong to — a Facebook-carousel body, a Threads body, and a Twitter body are separate posts, not one combined payload.
+Use `--body` when you need fields beyond the shortcut flags (per-platform `platform_overrides`, `twitter_options`/`threads_options`, `timezone`, `hide_client`, etc.). The JSON is sent verbatim, so build it for the platform(s) your `accounts` belong to — a Facebook-carousel body, a Threads body, and a Twitter body are separate posts, not one combined payload.
 
 ```jsonc
 // /tmp/post.json — a Facebook carousel via the full body schema
