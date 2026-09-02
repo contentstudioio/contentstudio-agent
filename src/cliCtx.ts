@@ -26,11 +26,14 @@ export function ctxFromArgv(argv: any): GlobalArgs {
  * Load config (applying any `--base-url` override) and return a Client.
  * Throws ConfigError if API key isn't configured (caught by run()).
  */
-export function buildClient(g: GlobalArgs): { cfg: Config; client: Client } {
+export function buildClient(
+  g: GlobalArgs,
+  opts: { timeoutMs?: number } = {},
+): { cfg: Config; client: Client } {
   const cfg = loadConfig();
   if (g.baseUrl) cfg.baseUrl = g.baseUrl;
   cfg.requireApiKey();
-  return { cfg, client: new Client(cfg) };
+  return { cfg, client: new Client(cfg, opts) };
 }
 
 /**
