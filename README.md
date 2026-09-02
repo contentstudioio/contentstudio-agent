@@ -8,9 +8,9 @@
 npx skills add contentstudioio/contentstudio-agent
 ```
 
-ContentStudio CLI — schedule social-media posts, manage media, accounts, comments, and approvals across **Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, and Google Business Profile** through the [ContentStudio](https://contentstudio.io) public API.
+ContentStudio CLI — schedule social-media posts, manage media, accounts, comments, approvals, the social inbox, and analytics across **Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, and Google Business Profile** through the [ContentStudio](https://contentstudio.io) public API.
 
-The `contentstudio` CLI provides a command-line interface for developers and AI agents to drive a ContentStudio workspace from the terminal — scheduling posts, uploading media, managing approvals, and auditing accounts/campaigns/labels — using the same API your dashboard does.
+The `contentstudio` CLI provides a command-line interface for developers and AI agents to drive a ContentStudio workspace from the terminal — scheduling posts, uploading media, managing approvals, triaging the inbox, pulling analytics reports, and auditing accounts/campaigns/labels — using the same API your dashboard does.
 
 ## Why use this CLI
 
@@ -802,6 +802,33 @@ contentstudio --json media:upload --url https://example.com/img.jpg --dry-run
 
 The response includes an `id` you can pass as `--media-id` when creating posts.
 
+## Analytics
+
+Read-only performance reports across Facebook, Instagram, YouTube, Pinterest, LinkedIn, Google Business Profile, TikTok, Twitter/X, Meta Ads and Google Ads, plus cross-network Campaigns & Labels reports — 133 commands under the `analytics:` namespace, one per backend endpoint. Full per-platform command reference lives in [SKILL.md](./SKILL.md#analytics).
+
+```bash
+# Date-range report — most commands take --platform-id + --start-date/--end-date
+contentstudio --json analytics:instagram-top-posts \
+  --platform-id <account_id> --start-date 2026-08-01 --end-date 2026-08-12
+
+# With optional filters (order-by is an enum, media-type is repeatable)
+contentstudio --json analytics:facebook-get-top-posts \
+  --platform-id <account_id> --start-date 2026-08-01 --end-date 2026-08-12 \
+  --order-by comments --media-type IMAGE --media-type VIDEO
+
+# Single-item lookup — platform-native id, not a ContentStudio id
+contentstudio --json analytics:youtube-single-video --platform-id <account_id> --post-id <video_id>
+
+# AI-generated insights
+contentstudio --json analytics:linkedin-ai-insights \
+  --platform-id <account_id> --start-date 2026-08-01 --end-date 2026-08-12 --language en
+
+# See exactly which options a given command takes
+contentstudio analytics:pinterest-top-pins --help
+```
+
+All analytics commands are read-only GETs — none take `--dry-run`. A response with `"status": false` and `"error_code": "ANALYTICS_UPSTREAM_ERROR"` means ContentStudio's own analytics pipeline is temporarily unavailable, not a bad request.
+
 ## Platform-Specific Examples
 
 The full body schema accepts platform-specific options. These examples show the most common configurations.
@@ -1253,6 +1280,13 @@ contentstudio --json comments:add  <post_id> "message" [--note] [--mention <id>]
 contentstudio --json media:list [--type images|videos] [--sort recent]             # List
 contentstudio --json media:upload --file <path>                                    # Upload local file
 contentstudio --json media:upload --url <url>                                      # Import from URL
+
+# Analytics (133 commands — one per endpoint; see SKILL.md#analytics for the full list)
+contentstudio --json analytics:<platform>-<report> --platform-id <id> --start-date <d> --end-date <d>
+contentstudio --json analytics:<platform>-single-post --platform-id <id> --post-id <native_id>
+contentstudio --json analytics:meta-ads-summary --account-id <act_id> --start-date <d> --end-date <d>
+contentstudio --json analytics:google-ads-ai-insights --account-id <id> --start-date <d> --end-date <d> --type aiInsightsDetailed
+contentstudio analytics:<platform>-<report> --help                                 # Exact options per command
 
 # Globals
 contentstudio --version                                                             # Print version

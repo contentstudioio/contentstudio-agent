@@ -1,6 +1,6 @@
 ---
 name: contentstudio
-description: ContentStudio is a tool to schedule social-media posts and manage the social inbox across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile. Use when the user wants to list/create/delete/approve posts, find the best time to post, read and reply to DMs, comments and reviews, manage media, or audit workspaces, accounts, campaigns, labels, categories, or team-members on their ContentStudio account.
+description: ContentStudio is a tool to schedule social-media posts, manage the social inbox, and pull performance analytics across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile. Use when the user wants to list/create/delete/approve posts, find the best time to post, read and reply to DMs, comments and reviews, manage media, audit workspaces, accounts, campaigns, labels, categories, or team-members, or pull analytics reports (top posts, engagement, impressions, follower growth, AI insights, etc.) on their ContentStudio account.
 version: 1.2.0
 homepage: https://api.contentstudio.io/guide
 metadata: {"openclaw":{"emoji":"📅","requires":{"bins":["contentstudio"],"env":["CONTENTSTUDIO_API_KEY"]}}}
@@ -565,6 +565,245 @@ unconfirmed.
 inbox service is temporarily unreachable rather than a missing item — retry
 after a short backoff. An empty `inbox:list` result is a successful empty
 read: report it as "no matching conversations", not "not found".
+
+### Analytics
+
+Read-only performance reports across Facebook, Instagram, YouTube, Pinterest,
+LinkedIn, Google Business Profile, TikTok, Twitter/X, **Meta Ads** and
+**Google Ads**, plus cross-network Campaigns & Labels reports (133 commands
+total, one per backend endpoint — no generic passthrough).
+
+Most commands need `--platform-id` (the connected account, from
+`accounts:list`) plus either a date range or a native post id. The ads and
+campaign/label families are the exceptions — see below:
+
+- **Date-range reports** — `--start-date` / `--end-date` (`YYYY-MM-DD`,
+  both required). Optional on most: `--timezone` (IANA name, default UTC),
+  `--date` (alternative `'YYYY-MM-DD - YYYY-MM-DD'` form that overrides the
+  range), `--limit` / `--offset`, `--order-by` (choices vary per command —
+  check `--help`), and array filters like `--media-type`, `--hashtags`,
+  `--entity-type` (repeat the flag for multiple values).
+- **Single-item lookups** (`*-single-post`, `*-single-pin`, `*-single-tweet`,
+  `*-single-video`) — `--platform-id` + `--post-id` (the platform-native id,
+  not a ContentStudio internal id). No date range.
+- **AI insights** commands (`*-ai-insights`) additionally take `--type`
+  (`aiInsightsSummary` for the compact card, `aiInsightsDetailed` for the full
+  report) and `--language` (ISO 639-1, default `en`). Both ads platforms have
+  one too.
+- **Ads reports** (`analytics:meta-ads-*`, `analytics:google-ads-*`) take
+  `--account-id` — an *ad* account (`act_…` on Meta, a customer id on Google,
+  from `analytics:meta-ads-accounts` / `analytics:google-ads-accounts`) — not
+  `--platform-id`. Table commands add `--limit`/`--offset`, `--search`,
+  `--order-by`/`--order-dir` and id filters (`--campaign-id`, `--ad-set-id`,
+  `--ad-group-id`); chart commands add `--metric` and `--level`.
+  `analytics:*-ads-accounts` needs no account at all — it is how you find one.
+- **Campaigns & Labels** (`analytics:campaigns-labels-*`) are the only POST
+  reports: the filters are lists, so repeat the flag —
+  `--campaigns <id> --campaigns <id>`, `--labels <id>`, and one account list
+  per network (`--facebook-accounts`, `--instagram-accounts`, …). Only
+  `--start-date`/`--end-date` are required.
+
+Run `contentstudio analytics:<command> --help` to see the exact options for
+any one command — required vs. optional and enum choices differ per endpoint.
+
+Every analytics command is read-only — the campaign/label ones are POSTs only
+because their filters are arrays — so none of them take `--dry-run` (that flag
+only exists on mutating commands elsewhere in this CLI).
+
+**If a command returns `ANALYTICS_UPSTREAM_ERROR`** (HTTP 200 with
+`status: false`, often `upstream_status: 401`), that is the ContentStudio
+backend's own analytics pipeline failing upstream — not a bad request. Report
+it as "the analytics service is temporarily unavailable," don't retry the
+exact same call in a loop, and don't treat it as evidence the account/workspace
+is wrong.
+
+**Facebook (15)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:facebook-active-users` | Facebook active users by hour and day of week | --platform-id, --start-date, --end-date |
+| `analytics:facebook-ai-insights` | Facebook AI-generated insights | --platform-id, --start-date, --end-date |
+| `analytics:facebook-audience-growth` | Facebook fan / follower growth over time | --platform-id, --start-date, --end-date |
+| `analytics:facebook-audience-location` | Facebook audience location (country/city breakdown) | --platform-id, --start-date, --end-date |
+| `analytics:facebook-demographics` | Facebook audience age / gender / country / city demographics | --platform-id, --start-date, --end-date |
+| `analytics:facebook-demographics-overview` | Facebook demographics overview widget | --platform-id, --start-date, --end-date |
+| `analytics:facebook-engagement` | Facebook page engagements over time | --platform-id, --start-date, --end-date |
+| `analytics:facebook-get-top-posts` | Facebook top posts with media_type filter | --platform-id, --start-date, --end-date |
+| `analytics:facebook-impressions` | Facebook page impressions over time | --platform-id, --start-date, --end-date |
+| `analytics:facebook-overview-top-posts` | Facebook top posts (overview widget) | --platform-id, --start-date, --end-date |
+| `analytics:facebook-publishing-behaviour` | Facebook engagement by impression type over time | --platform-id, --start-date, --end-date |
+| `analytics:facebook-reels` | Facebook Reels performance over time | --platform-id, --start-date, --end-date |
+| `analytics:facebook-single-post` | Get a single Facebook post by ID | --platform-id, --post-id |
+| `analytics:facebook-summary` | Facebook summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:facebook-video-insights` | Facebook video view time and plays over time | --platform-id, --start-date, --end-date |
+
+**Instagram (15)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:instagram-active-users` | Instagram active users by hour and day of week | --platform-id, --start-date, --end-date |
+| `analytics:instagram-ai-insights` | Instagram AI-generated insights | --platform-id, --start-date, --end-date |
+| `analytics:instagram-audience-growth` | Instagram follower growth over time | --platform-id, --start-date, --end-date |
+| `analytics:instagram-country-city` | Instagram audience country / city breakdown | --platform-id, --start-date, --end-date |
+| `analytics:instagram-demographics-age` | Instagram audience age / gender breakdown | --platform-id, --start-date, --end-date |
+| `analytics:instagram-engagement` | Instagram post engagement over time | --platform-id, --start-date, --end-date |
+| `analytics:instagram-get-top-posts` | Instagram top posts with hashtag filter | --platform-id, --start-date, --end-date |
+| `analytics:instagram-hashtags` | Instagram top hashtags by engagement | --platform-id, --start-date, --end-date |
+| `analytics:instagram-impressions` | Instagram post impressions over time | --platform-id, --start-date, --end-date |
+| `analytics:instagram-publishing-behaviour` | Instagram post engagement by media type over time | --platform-id, --start-date, --end-date |
+| `analytics:instagram-reels-performance` | Instagram Reels engagement and watch time over time | --platform-id, --start-date, --end-date |
+| `analytics:instagram-single-post` | Get a single Instagram post by ID | --platform-id, --post-id |
+| `analytics:instagram-stories-performance` | Instagram stories impressions, reach, and interactions over time | --platform-id, --start-date, --end-date |
+| `analytics:instagram-summary` | Instagram summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:instagram-top-posts` | Instagram top-performing posts | --platform-id, --start-date, --end-date |
+
+**YouTube (20)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:youtube-ai-insights` | YouTube AI-generated insights | --platform-id, --start-date, --end-date |
+| `analytics:youtube-demographics` | YouTube audience demographics — age & gender, device type, subscriber change | --platform-id, --start-date, --end-date |
+| `analytics:youtube-engagement-trend` | YouTube cumulative engagement trend over time | --platform-id, --start-date, --end-date |
+| `analytics:youtube-engagement-trend-daily` | YouTube daily-delta engagement trend | --platform-id, --start-date, --end-date |
+| `analytics:youtube-find-video` | YouTube traffic source breakdown (how viewers found videos) | --platform-id, --start-date, --end-date |
+| `analytics:youtube-least-posts` | YouTube least-performing videos ordered by views and engagement | --platform-id, --start-date, --end-date |
+| `analytics:youtube-performance-schedule` | YouTube video performance metrics grouped by publish date | --platform-id, --start-date, --end-date |
+| `analytics:youtube-publishing-behaviour` | YouTube posts published over time and content-type breakdown | --platform-id, --start-date, --end-date |
+| `analytics:youtube-single-video` | Get a single YouTube video by ID | --platform-id, --post-id |
+| `analytics:youtube-sorted-top-posts` | YouTube videos sorted by a configurable metric | --platform-id, --start-date, --end-date |
+| `analytics:youtube-subscriber-trend` | YouTube cumulative subscriber trend over time | --platform-id, --start-date, --end-date |
+| `analytics:youtube-subscriber-trend-daily` | YouTube daily-delta subscriber trend | --platform-id, --start-date, --end-date |
+| `analytics:youtube-summary` | YouTube summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:youtube-top-geographies` | YouTube top geographies — countries pre-sorted by views, watch time, view duration and view percentage | --platform-id, --start-date, --end-date |
+| `analytics:youtube-top-posts` | YouTube top videos ordered by views and engagement | --platform-id, --start-date, --end-date |
+| `analytics:youtube-video-sharing` | YouTube sharing platform breakdown | --platform-id, --start-date, --end-date |
+| `analytics:youtube-views-trend` | YouTube cumulative views split by subscriber / non-subscriber | --platform-id, --start-date, --end-date |
+| `analytics:youtube-views-trend-daily` | YouTube daily-delta views trend | --platform-id, --start-date, --end-date |
+| `analytics:youtube-watch-time-trend` | YouTube cumulative watch time split by subscriber / non-subscriber | --platform-id, --start-date, --end-date |
+| `analytics:youtube-watch-time-trend-daily` | YouTube daily-delta watch time trend | --platform-id, --start-date, --end-date |
+
+**Pinterest (14)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:pinterest-ai-insights` | Pinterest AI-generated insights | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-engagement-trend` | Pinterest cumulative engagement trend over time | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-engagement-trend-daily` | Pinterest daily-delta engagement trend | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-follower-trend` | Pinterest cumulative follower trend over time | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-follower-trend-daily` | Pinterest daily-delta follower trend | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-impressions-trend` | Pinterest cumulative impressions trend over time | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-impressions-trend-daily` | Pinterest daily-delta impressions trend | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-pin-performance` | Pinterest pin performance metrics over time | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-pin-posting` | Pinterest cumulative pin posting activity over time | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-pin-posting-daily` | Pinterest daily-delta pin posting activity | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-pin-rollup` | Pinterest pin performance rollup — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-single-pin` | Get a single Pinterest pin by ID | --platform-id, --post-id |
+| `analytics:pinterest-summary` | Pinterest summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:pinterest-top-pins` | Pinterest top-performing and least-performing pins | --platform-id, --start-date, --end-date |
+
+**LinkedIn (11)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:linkedin-ai-insights` | LinkedIn AI-generated insights | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-audience-growth` | LinkedIn follower growth over time | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-followers-demographics` | LinkedIn follower demographics by industry, country, and other dimensions | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-get-top-posts` | LinkedIn top posts with hashtag and media type filter | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-hashtags` | LinkedIn top hashtags by engagement | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-page-views` | LinkedIn page views over time (desktop vs mobile) | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-posts-per-days` | LinkedIn post count distribution by day of week | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-publishing-behaviour` | LinkedIn post engagement by media type over time | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-single-post` | Get a single LinkedIn post by ID | --platform-id, --post-id |
+| `analytics:linkedin-summary` | LinkedIn summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:linkedin-top-posts` | LinkedIn top-performing posts | --platform-id, --start-date, --end-date |
+
+**Google Business Profile (GMB) (10)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:gmb-actions` | GMB customer actions (clicks, calls, directions) over time | --platform-id, --start-date, --end-date |
+| `analytics:gmb-ai-insights` | GMB AI-generated insights | --platform-id, --start-date, --end-date |
+| `analytics:gmb-impressions` | GMB impressions breakdown by channel and device over time | --platform-id, --start-date, --end-date |
+| `analytics:gmb-media-activity` | GMB media (photo/video) activity over time | --platform-id, --start-date, --end-date |
+| `analytics:gmb-publishing-behavior` | GMB posts published over time and topic-type breakdown | --platform-id, --start-date, --end-date |
+| `analytics:gmb-reviews` | GMB reviews — ratings, distribution, and daily activity | --platform-id, --start-date, --end-date |
+| `analytics:gmb-search-keywords` | GMB top search keywords that surfaced the listing | --platform-id, --start-date, --end-date |
+| `analytics:gmb-single-post` | Get a single GMB post by ID | --platform-id, --post-id |
+| `analytics:gmb-summary` | GMB summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:gmb-top-posts` | GMB top-performing posts | --platform-id, --start-date, --end-date |
+
+**TikTok (8)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:tiktok-ai-insights` | TikTok AI-generated insights | --platform-id, --start-date, --end-date |
+| `analytics:tiktok-engagement-trend` | TikTok daily engagement trend over time | --platform-id, --start-date, --end-date |
+| `analytics:tiktok-follower-trend` | TikTok follower and views trend over time | --platform-id, --start-date, --end-date |
+| `analytics:tiktok-publishing-behaviour` | TikTok daily post volume and engagement breakdown over time | --platform-id, --start-date, --end-date |
+| `analytics:tiktok-single-post` | Get a single TikTok post by ID | --platform-id, --post-id |
+| `analytics:tiktok-sorted-top-posts` | TikTok posts sorted by a configurable metric | --platform-id, --start-date, --end-date |
+| `analytics:tiktok-summary` | TikTok summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:tiktok-top-posts` | TikTok top and least performing posts | --platform-id, --start-date, --end-date |
+
+**Twitter/X (7)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:twitter-credits-used` | Twitter API credits usage for the workspace | --platform-id, --start-date, --end-date |
+| `analytics:twitter-engagement-impression` | Twitter engagement and impression trend over time | --platform-id, --start-date, --end-date |
+| `analytics:twitter-followers-trend` | Twitter follower trend over time | --platform-id, --start-date, --end-date |
+| `analytics:twitter-least-tweets` | Twitter least-performing tweets | --platform-id, --start-date, --end-date |
+| `analytics:twitter-single-tweet` | Get a single Twitter/X tweet by ID | --platform-id, --post-id |
+| `analytics:twitter-summary` | Twitter summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
+| `analytics:twitter-top-tweets` | Twitter top-performing tweets | --platform-id, --start-date, --end-date |
+
+**Meta Ads (11)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:meta-ads-accounts` | List connected Meta ad accounts | — |
+| `analytics:meta-ads-ad-sets` | Ad sets with per-ad-set metrics | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-ads` | Ads with per-ad metrics and creative details | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-ai-insights` | AI-generated insights for an ad account | --account-id, --start-date, --end-date, --type |
+| `analytics:meta-ads-campaigns` | Campaigns with per-campaign metrics | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-demographics` | Audience breakdown by age and gender, region or country | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-performance-by-level` | One metric broken down by campaign, ad set or ad | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-performance-by-placement` | One metric broken down by publisher platform and placement | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-performance-over-time` | Daily time series for one or more metrics | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-results-by-objective` | Results and spend grouped by campaign objective | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-summary` | Meta Ads headline KPIs — current vs previous period | --account-id, --start-date, --end-date |
+
+**Google Ads (17)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:google-ads-accounts` | List connected Google Ads accounts | — |
+| `analytics:google-ads-ad-groups` | Ad groups with per-ad-group metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-ads` | Ads with per-ad metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-ai-insights` | AI-generated insights for an ad account | --account-id, --start-date, --end-date, --type |
+| `analytics:google-ads-campaigns` | Campaigns with per-campaign metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-conversion-actions` | Conversion actions configured on the account | --account-id, --start-date, --end-date |
+| `analytics:google-ads-conversion-funnel` | Conversion funnel — impressions through to conversions | --account-id, --start-date, --end-date |
+| `analytics:google-ads-conversions-by-action` | Conversions grouped by conversion action | --account-id, --start-date, --end-date |
+| `analytics:google-ads-conversions-over-time` | Conversions over time | --account-id, --start-date, --end-date |
+| `analytics:google-ads-demographics` | Audience breakdown by age, gender and location | --account-id, --start-date, --end-date |
+| `analytics:google-ads-keywords` | Keywords with per-keyword metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-performance-by-level` | One metric broken down by campaign, ad group or ad | --account-id, --start-date, --end-date |
+| `analytics:google-ads-performance-by-type` | One metric broken down by campaign type | --account-id, --start-date, --end-date |
+| `analytics:google-ads-performance-over-time` | Daily time series for one or more metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-search-terms` | Search terms with per-term metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-shopping` | Shopping campaign product performance | --account-id, --start-date, --end-date |
+| `analytics:google-ads-summary` | Google Ads headline KPIs — current vs previous period | --account-id, --start-date, --end-date |
+
+**Campaigns & Labels (5)**
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:campaigns-labels-breakdown` | Per-campaign and per-label totals, current vs previous period | --start-date, --end-date |
+| `analytics:campaigns-labels-insights-breakdown` | Daily time series per campaign and per label | --start-date, --end-date |
+| `analytics:campaigns-labels-posts` | Per-post table for the selected campaigns & labels | --start-date, --end-date |
+| `analytics:campaigns-labels-summary` | Campaign & label summary KPIs — current vs previous period | --start-date, --end-date |
+| `analytics:campaigns-labels-top-posts` | Top 5 posts per network for the selected campaigns & labels | --start-date, --end-date |
 
 ---
 
