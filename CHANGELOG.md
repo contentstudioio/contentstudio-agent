@@ -1,5 +1,90 @@
 # Changelog
 
+## 1.3.0 — AI image generation
+
+The public API gained an AI image surface, so the CLI and the agent skill cover
+it: five endpoints under `/workspaces/{w}/ai/...`, wrapped as an `images:*`
+command group. Generation is synchronous and every success returns a `media_id`
+that `posts:create --media-id` takes unchanged — prompt to scheduled post in two
+commands.
+
+### Discovery
+
+- `images:tools` — the image tools this API can invoke, with each one's required
+  inputs and its control options. An empty list means the catalogue is
+  temporarily unreachable, not that the workspace has no tools.
+- `images:models` — the model identifiers `images:generate` accepts. A curated
+  list, narrower than the models the web app offers.
+- `images:brand` — `{configured, enabled}`: whether `--use-brand` will apply
+  anything. Status only; brand content is never returned, and there is no brand
+  CRUD on this API.
+
+### Generation
+
+- `images:generate -p "<prompt>"` — prompt → image, saved to the media library.
+  Flags: `--model`, `--dimensions` (`square`, `square_hd`, `portrait_4_5`,
+  `landscape_16_9`), `--use-brand`, `--enhance-prompt` / `--no-enhance-prompt`.
+- `images:generate -p "<edit>" --image-url <url>` — edit an existing image
+  instead. The prompt describes the change. `--dimensions` does not apply on this
+  path (the source geometry wins) and `brand_applied` is always `false`.
+- One command per dedicated tool: `images:product-image`, `images:headshot`,
+  `images:face-swap`, `images:outfit-swap`, `images:upscale`,
+  `images:remove-background`. Flag names mirror the API's field names
+  (`--target-image-url`, `--face-image-url`, `--product-image-url`, …).
+- `images:tool <tool_key> --body '<json>'` — any tool the API exposes, with its
+  full control set. This is how `image-to-image`'s `style`, `image_resolution`,
+  `image_quality`, multiple `attachments` and `reference_image_urls` are reached,
+  and it keeps working when a tool is added upstream without a CLI release.
+
+All of them take `--dry-run`, `--json` and `--timeout <seconds>`.
+
+### Notes
+
+- **`media_id` is the durable handle; `url` is not.** `url` is for previews and
+  for chaining one tool into the next. A `url` returned alongside a
+  `persist_error` is a temporary provider link — the image was generated *and
+  charged* but not saved, so `media_id` is `null`. Human mode warns about this
+  explicitly; `media_storage_full` says retrying will fail the same way.
+- **The generating calls do not auto-retry.** Everywhere else the client retries
+  `429`/`5xx` twice; here it does not, because these POSTs are billable and not
+  idempotent and a retry can consume a second image credit. The three discovery
+  commands retry normally.
+- **Timeout is 150s, above the server's own 120s deadline**, so a slow model
+  surfaces as the API's `AI_SERVICE_TIMEOUT` (which names the cause and costs no
+  image credits) rather than an opaque local abort. `--timeout <seconds>`
+  overrides it.
+- **Error codes are mapped to typed errors with actionable hints**, because the
+  bare HTTP mapping was actively misleading: exhausted image credits are a `403`,
+  which would otherwise read as an `AuthError` and send an agent into an
+  `auth:login` loop that can never help. New `CreditLimitError` (exit code 8) for
+  `IMAGE_CREDIT_LIMIT_EXCEEDED`; `CONTENT_BLOCKED` and `IMAGE_INPUT_REJECTED`
+  render as `ValidationError` with distinct copy (rephrase the prompt vs. fix the
+  image URL); `TOOL_NOT_FOUND` points at `images:tools`; `RATE_LIMIT_EXCEEDED`
+  says the bucket is 30/min and shared with the app's own AI usage. A `403` with
+  no `error_code` is a membership / API-request-credit problem and stays an
+  `AuthError`.
+- **Input URLs are validated client-side** for the `http(s)` scheme and the 2048
+  character cap, as are the 1000-character `--prompt` / `--instructions` limits
+  and the `--dimensions` presets — a rejected call still costs an API request
+  credit, and a local path is a typo rather than a decision.
+- Every URL passed in is downloaded by the image service, so it must be publicly
+  reachable. The CLI's error text points at `media:upload --file` for local files.
+- Video tools (`image-to-video`, `motion-control`, `lip-sync`,
+  `talking-avatar`) are not exposed on this API and answer `TOOL_NOT_FOUND`.
+- `buildClient` now takes optional `ClientOpts`, which is how the image group
+  raises the timeout and switches retries off. No change for existing callers.
+- README gained an **AI Images** section; SKILL.md gained an **AI images**
+  command reference and a generate-then-publish recipe.
+- `images:tools` shows the command and flags to run each tool with, plus each
+  control's allowed options. It deliberately does **not** print the
+  descriptor's `inputs[].name`: those are the underlying tool's slot names
+  (`image`, `target_image`, `product`), neither wire fields nor flags, so
+  printing them pointed readers at flags that do not exist. The footer says
+  outright that a control with no matching flag cannot be sent — `upscale`
+  advertises `model` and `upscale_factor`, and the API's tool payload accepts
+  neither, the same way `accepts_instructions` on `headshot` / `face-swap` is
+  unreachable when only `product-image` declares `instructions`.
+
 ## Unreleased — Ads analytics support
 
 34 more commands under the `analytics:` namespace, tracking the public API's ads

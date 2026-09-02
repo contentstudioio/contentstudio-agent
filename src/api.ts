@@ -18,6 +18,10 @@ import {
   BackendError,
   ConfigError,
   ContentStudioError,
+  CreditLimitError,
+  NotFoundError,
+  RateLimitError,
+  ValidationError,
   fromHttpStatus,
 } from "./errors";
 
@@ -2847,6 +2851,178 @@ export async function schedulingOptimalTimes(
     individual:
       raw?.individual && typeof raw.individual === "object" ? raw.individual : {},
   };
+}
+
+// ─────────────────────────────────────────────────────────────────
+// AI images — generation and the image tool set.
+// (added in v1.3.0)
+//
+//   GET  /workspaces/{w}/ai/images/tools        invocable tools + their inputs
+//   GET  /workspaces/{w}/ai/images/models       models `generate` accepts
+//   GET  /workspaces/{w}/ai/brand               {configured, enabled}
+//   POST /workspaces/{w}/ai/images/generate     prompt → image
+//   POST /workspaces/{w}/ai/images/tools/{key}  run one tool on supplied images
+//
+// Both POSTs are synchronous and return the same `data`: a `media_id` that
+// `POST /posts` accepts verbatim under `content.media.media_ids`.
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * Client timeout for the two generation POSTs. The server's own deadline is
+ * 120s (it answers `504 AI_SERVICE_TIMEOUT` at that point), so the client waits
+ * past it: aborting first would turn a server-side timeout — which is reported
+ * with an error code and costs no image credits — into an opaque local abort.
+ */
+export const IMAGE_TIMEOUT_MS = 150_000;
+
+/** The four `dimensions` presets the API publishes. Text→image only. */
+export const IMAGE_DIMENSIONS = [
+  "square",
+  "square_hd",
+  "portrait_4_5",
+  "landscape_16_9",
+] as const;
+
+/** Max lengths the API enforces, checked client-side to save a request credit. */
+export const MAX_IMAGE_PROMPT = 1000;
+export const MAX_IMAGE_URL = 2048;
+
+export interface ImageGenerateBody {
+  prompt: string;
+  /** Present ⇒ the call becomes an edit of this image (upstream image-to-image). */
+  image_url?: string;
+  model?: string;
+  use_brand?: boolean;
+  dimensions?: string;
+  enhance_prompt?: boolean;
+}
+
+/** The shared `data` of both generation POSTs. Every field but the two booleans is nullable. */
+export interface ImageResult {
+  media_id: string | null;
+  url: string | null;
+  width: number | null;
+  height: number | null;
+  mime_type: string | null;
+  model_used: string | null;
+  brand_applied: boolean;
+  credits: { consumed: number; available: number | null };
+  /** Set when the image was generated and charged but could not be saved. */
+  persist_error: string | null;
+}
+
+/**
+ * `error_code` → the CLI error class and the hint to print.
+ *
+ * The API's `message` is localized copy and stays the message; only the class
+ * and the "what do I do about it" line are ours. Without this every one of
+ * these is a bare HTTP mapping: a 403 for exhausted image credits reads as an
+ * auth failure, and a policy refusal reads as an ordinary 422.
+ */
+const IMAGE_ERROR_MAP: Record<string, [typeof ContentStudioError, string]> = {
+  IMAGE_CREDIT_LIMIT_EXCEEDED: [
+    CreditLimitError,
+    "Out of AI image credits. Top up the plan's image credits or wait for the " +
+      "billing cycle to reset — this call charged nothing. Note the check is " +
+      "strict: a 5-credit model with 3 credits left is refused, not downgraded.",
+  ],
+  CONTENT_BLOCKED: [
+    ValidationError,
+    "The content policy refused this prompt. Rephrase it — retrying the same " +
+      "prompt fails again. No image credits were charged.",
+  ],
+  IMAGE_INPUT_REJECTED: [
+    ValidationError,
+    "The image service could not work with the inputs — usually an image URL it " +
+      "could not download. Every URL must be publicly fetchable over http(s): no " +
+      "auth, no expired signature, no private bucket. No image credits were charged.",
+  ],
+  TOOL_NOT_FOUND: [
+    NotFoundError,
+    "Unknown or unavailable tool. Run `contentstudio images:tools` for the " +
+      "invocable list — video tools are not exposed on this API.",
+  ],
+  RATE_LIMIT_EXCEEDED: [
+    RateLimitError,
+    "30 requests/minute on the shared AI-tools bucket, keyed by the account that " +
+      "owns the API key — the ContentStudio app's own AI usage counts against it. " +
+      "Wait out the minute and retry.",
+  ],
+  AI_SERVICE_TIMEOUT: [
+    BackendError,
+    "The image service did not finish inside the server's 120s deadline. Retry " +
+      "with backoff, or pick a faster model from `images:models`.",
+  ],
+  AI_SERVICE_UNAVAILABLE: [
+    BackendError,
+    "The image service is unavailable or returned no image. Retry promptly. On a " +
+      "tool run this can arrive after the credit was taken, so check `credits` on " +
+      "the next successful call rather than assuming nothing was charged.",
+  ],
+};
+
+/** Re-type an image-endpoint failure by its `error_code`; pass anything else through. */
+function imageError(e: unknown): unknown {
+  if (!(e instanceof ContentStudioError)) return e;
+  const code = (e.payload as any)?.error_code;
+  const row = typeof code === "string" ? IMAGE_ERROR_MAP[code] : undefined;
+  if (!row) return e;
+  const [Cls, hint] = row;
+  return new Cls(e.message, { httpStatus: e.httpStatus, payload: e.payload, hint });
+}
+
+/** GET the invocable image tools. `[]` means "catalogue unreachable, try later". */
+export async function listImageTools(c: Client, workspaceId: string) {
+  const data = await c.get<any>(`/workspaces/${workspaceId}/ai/images/tools`);
+  return (data?.tools ?? []) as any[];
+}
+
+/** GET the model identifiers `generate` accepts. */
+export async function listImageModels(c: Client, workspaceId: string) {
+  const data = await c.get<any>(`/workspaces/${workspaceId}/ai/images/models`);
+  return (data?.models ?? []) as string[];
+}
+
+/** GET whether `--use-brand` will actually apply anything. Never returns brand content. */
+export function getAiBrandStatus(c: Client, workspaceId: string) {
+  return c.get<{ configured: boolean; enabled: boolean }>(
+    `/workspaces/${workspaceId}/ai/brand`,
+  );
+}
+
+export async function generateImage(
+  c: Client,
+  workspaceId: string,
+  body: ImageGenerateBody,
+): Promise<ImageResult> {
+  try {
+    return await c.post<ImageResult>(`/workspaces/${workspaceId}/ai/images/generate`, {
+      json: body,
+    });
+  } catch (e) {
+    throw imageError(e);
+  }
+}
+
+/**
+ * POST one image tool. `toolKey` is not validated client-side on purpose — the
+ * server owns the registry, so a tool added upstream works here without a CLI
+ * release, and an unknown one comes back as `404 TOOL_NOT_FOUND`.
+ */
+export async function invokeImageTool(
+  c: Client,
+  workspaceId: string,
+  toolKey: string,
+  body: Record<string, unknown>,
+): Promise<ImageResult> {
+  try {
+    return await c.post<ImageResult>(
+      `/workspaces/${workspaceId}/ai/images/tools/${encodeURIComponent(toolKey)}`,
+      { json: body },
+    );
+  } catch (e) {
+    throw imageError(e);
+  }
 }
 
 // Re-export ContentStudioError for convenience in commands.
