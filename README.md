@@ -1288,10 +1288,20 @@ contentstudio --json analytics:meta-ads-summary --account-id <act_id> --start-da
 contentstudio --json analytics:google-ads-ai-insights --account-id <id> --start-date <d> --end-date <d> --type aiInsightsDetailed
 contentstudio analytics:<platform>-<report> --help                                 # Exact options per command
 
+# Analytics — Bluesky (10 commands) and Threads (16); --help lists each one's flags
+contentstudio --json analytics:bluesky-summary --platform-id <did> \
+  --start-date 2026-08-01 --end-date 2026-08-31
+contentstudio --json analytics:threads-top-posts --platform-id <id> \
+  --start-date 2026-08-01 --end-date 2026-08-31 --limit 10
+contentstudio --json analytics:threads-demographics --platform-id <id> \
+  --start-date 2026-08-01 --end-date 2026-08-31 --breakdown age
+
 # Analytics — reports (async: generate, then poll)
 contentstudio --json reports:options                                                # Report types + their sections
 contentstudio reports:generate --name "Aug" --platform-type facebook \
   --accounts <id> --date "2026-08-01 - 2026-08-31"                                  # Returns an id immediately
+contentstudio reports:generate --name "Rivals" --platform-type facebook_competitor \
+  --competitor-report-id <id> --date "2026-08-01 - 2026-08-31"                      # Competitor set, not accounts
 contentstudio reports:get <report_id> --wait                                        # Poll until ready, print download URL
 contentstudio --json reports:list                                                   # Previously generated
 contentstudio reports:retry <report_id>                                             # Re-run a failed one

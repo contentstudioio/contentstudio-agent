@@ -2761,6 +2761,248 @@ export function youtubeAnalyticsPublishingBehaviour(
 // the CLI's standard {ok, data} shape like every other command.
 // ─────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────
+// Analytics — Bluesky and Threads.
+//
+// Same shape as the other per-platform analytics readers above. Both networks publish no
+// impressions or reach, so neither has the exposure endpoints the older platforms do — the
+// endpoint list here is the whole surface, not a subset awaiting more.
+// ─────────────────────────────────────────────────────────────────
+
+/** Bluesky follower trend, tracked since connection */
+export function blueskyAnalyticsAudienceGrowth(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/audience-growth`, analyticsQuery(params));
+}
+
+/** Which Bluesky metrics are available, and why the rest are not */
+export function blueskyAnalyticsCapabilities(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/capabilities`, analyticsQuery(params));
+}
+
+/** Bluesky engagement trend by post publish date */
+export function blueskyAnalyticsEngagement(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/engagement`, analyticsQuery(params));
+}
+
+/** Bluesky top hashtags by engagement */
+export function blueskyAnalyticsHashtags(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/hashtags`, analyticsQuery(params));
+}
+
+/** Bluesky single post detail */
+export function blueskyAnalyticsPost(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/post`, analyticsQuery(params));
+}
+
+/** Bluesky posting cadence by weekday */
+export function blueskyAnalyticsPostsPerDays(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/posts-per-days`, analyticsQuery(params));
+}
+
+/** Bluesky publishing behaviour with a per-media-type rollup */
+export function blueskyAnalyticsPublishingBehaviour(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/publishing-behaviour`, analyticsQuery(params));
+}
+
+/** Bluesky paginated post table (default 15) */
+export function blueskyAnalyticsSortedTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/sorted-top-posts`, analyticsQuery(params));
+}
+
+/** Bluesky summary KPIs — current vs previous period */
+export function blueskyAnalyticsSummary(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/summary`, analyticsQuery(params));
+}
+
+/** Bluesky top authored posts (default 3) */
+export function blueskyAnalyticsTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/top-posts`, analyticsQuery(params));
+}
+
+/** Threads account activity — the true per-day series */
+export function threadsAnalyticsActivity(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/activity`, analyticsQuery(params));
+}
+
+/** Threads AI-generated insights */
+export function threadsAnalyticsAiInsights(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/ai-insights`, analyticsQuery(params));
+}
+
+/** Threads follower trend, tracked since connection */
+export function threadsAnalyticsAudienceGrowth(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/audience-growth`, analyticsQuery(params));
+}
+
+/** Threads follower demographics — country and city */
+export function threadsAnalyticsAudienceLocation(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/audience-location`, analyticsQuery(params));
+}
+
+/** What Threads analytics can and cannot answer */
+export function threadsAnalyticsCapabilities(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/capabilities`, analyticsQuery(params));
+}
+
+/** Threads follower demographics — age and gender */
+export function threadsAnalyticsDemographics(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/demographics`, analyticsQuery(params));
+}
+
+/** Threads engagement trend by post publish date */
+export function threadsAnalyticsEngagement(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/engagement`, analyticsQuery(params));
+}
+
+/** Threads top hashtags — the tags the author typed */
+export function threadsAnalyticsHashtags(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/hashtags`, analyticsQuery(params));
+}
+
+/** A single Threads post by media id */
+export function threadsAnalyticsPost(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/post`, analyticsQuery(params));
+}
+
+/** Threads posting cadence by weekday */
+export function threadsAnalyticsPostsPerDays(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/posts-per-days`, analyticsQuery(params));
+}
+
+/** Threads posting cadence by hour of day */
+export function threadsAnalyticsPostsPerHours(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/posts-per-hours`, analyticsQuery(params));
+}
+
+/** Threads publishing behaviour and per-media-type breakdown */
+export function threadsAnalyticsPublishingBehaviour(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/publishing-behaviour`, analyticsQuery(params));
+}
+
+/** Threads posts, paged and sorted for a table view */
+export function threadsAnalyticsSortedTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/sorted-top-posts`, analyticsQuery(params));
+}
+
+/** Threads summary KPIs — current vs previous period */
+export function threadsAnalyticsSummary(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/summary`, analyticsQuery(params));
+}
+
+/** Threads top posts for the period */
+export function threadsAnalyticsTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/top-posts`, analyticsQuery(params));
+}
+
+/** Threads top topic tags — Meta's curated concept */
+export function threadsAnalyticsTopicTags(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/topic-tags`, analyticsQuery(params));
+}
+
 /** Platforms accepted as an entity `type` by the optimal-times endpoint. */
 export const OPTIMAL_TIME_PLATFORMS = [
   "facebook",
