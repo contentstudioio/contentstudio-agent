@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.4.0 — Bluesky and Threads analytics, competitor reports are generatable
+
+### Bluesky and Threads analytics (26 commands)
+
+The `analytics:` namespace covered eight networks and stopped there; both newer
+platforms had none, despite the API serving them. Added one command per endpoint,
+same shape as every other platform:
+
+- **`analytics:bluesky-*` (10)** — `summary`, `audience-growth`, `engagement`,
+  `publishing-behaviour`, `top-posts`, `sorted-top-posts`, `post`,
+  `posts-per-days`, `hashtags`, `capabilities`.
+- **`analytics:threads-*` (16)** — the same, plus `activity` (the true per-day
+  account series, distinct from engagement-by-publish-date), `posts-per-hours`,
+  `topic-tags` (Meta's curated tags, counted separately from hashtags),
+  `demographics`, `audience-location` and `ai-insights`.
+
+Neither network publishes impressions or reach, so neither has the exposure
+endpoints the older platforms do. That is the whole surface, not a subset.
+
+### Competitor reports are generatable
+
+`reports:generate` gains **`--competitor-report-id`**, required for the
+`facebook_competitor` and `instagram_competitor` types. Those are built from a
+saved competitor set (see `competitor-reports:list`) rather than from connected
+accounts, and 1.3.0 shipped them as generatable types with no way to name the
+set — the id had to go somewhere, `--accounts` was the natural guess, and it was
+dropped silently: the call returned 202 and the report failed minutes later with
+"Combined report generation failed". The CLI now refuses that up front and names
+the flag.
+
+Requires the matching API change (`competitor_report_id` on the report-generate
+request). Against an older API the field is ignored and competitor reports still
+fail, so upgrade the CLI only once that has shipped.
+
 ## 1.3.0 — Analytics: reports, schedules, share links, competitors, ads
 
 ### Reports, schedules and share links

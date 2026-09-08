@@ -818,6 +818,13 @@ Start from `reports:options` rather than guessing: it returns the report types
 this workspace can build and the sections each one accepts, and it is the same
 catalogue the product's own section selector reads.
 
+**The two competitor types take a competitor set, not accounts.**
+`facebook_competitor` and `instagram_competitor` are built from a saved set, so
+they need `--competitor-report-id` (from `competitor-reports:list`) and ignore
+`--accounts`. Putting the set id in `--accounts` is the natural mistake and is
+refused before the call goes out — it used to be accepted, dropped, and surface
+minutes later as "Combined report generation failed".
+
 **Share links are how a client sees a report without an account.** Create one
 with `share-links:create`; `--password` protects it, `--date-range` pins the
 period so the numbers stop moving, and omitting the range leaves it rolling.

@@ -79,6 +79,10 @@ function sleep(ms: number): Promise<void> {
  * shorthand `id:Name,id:Name`. The API silently ignores bare strings, so the
  * shorthand is expanded here rather than passed through.
  */
+/** Report types built from a saved competitor set rather than from connected accounts.
+ *  Mirrors ReportPlatformTypes::COMPETITOR in the backend. */
+const COMPETITOR_REPORT_TYPES = ["facebook_competitor", "instagram_competitor"];
+
 function parseCompetitors(raw: unknown, flag: string): CompetitorEntry[] {
   const text = String(raw ?? "").trim();
   if (!text) throw new ConfigError(`${flag} is required.`);
@@ -385,17 +389,37 @@ export function registerAnalyticsReports<T>(yargs: Argv<T>): Argv<T> {
               type: "string",
               describe: "Notify this URL when the report finishes, instead of polling.",
             })
+            .option("competitor-report-id", {
+              type: "string",
+              describe:
+                "Saved competitor set to report on — required for facebook_competitor / instagram_competitor. Ids come from competitor-reports:list.",
+            })
             .option("dry-run", { type: "boolean", default: false }),
         run(async (argv: any, g) => {
           const { cfg, client } = buildClient(g);
           const wid = resolveWorkspace(cfg, g);
+          const platformType = String(argv["platform-type"] ?? argv.platformType);
+          const competitorReportId =
+            argv["competitor-report-id"] ?? argv.competitorReportId;
+
+          // Caught here rather than server-side so the message names the flag: a competitor report
+          // is built from a saved set, not from accounts, and the API answers 422 without it.
+          if (COMPETITOR_REPORT_TYPES.includes(platformType) && !competitorReportId) {
+            throw new ConfigError(
+              `--competitor-report-id is required for ${platformType}. List the sets with: competitor-reports:list`,
+            );
+          }
+
           const body = {
             name: String(argv.name),
-            platform_type: String(argv["platform-type"] ?? argv.platformType),
+            platform_type: platformType,
             accounts: csv(argv.accounts),
             sections: csv(argv.sections),
             date: argv.date,
             timezone: argv.timezone,
+            ...(competitorReportId
+              ? { competitor_report_id: String(competitorReportId) }
+              : {}),
             callback_url: argv["callback-url"] ?? argv.callbackUrl,
           };
           if (isDryRun(argv)) {
