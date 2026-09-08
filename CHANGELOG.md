@@ -1,6 +1,31 @@
 # Changelog
 
-## Unreleased — Ads analytics support
+## 1.3.0 — Analytics: reports, schedules, share links, competitors, ads
+
+### Reports, schedules and share links
+
+Three new command groups, all under the analytics umbrella:
+
+- **`reports:*` (6)** — `options`, `generate`, `get`, `list`, `retry`, `delete`.
+  Generation is asynchronous: `reports:generate` returns an id immediately and
+  `reports:get <id> --wait` polls until the download URL is ready.
+- **`report-schedules:*` (7)** — `create`, `list`, `get`, `pause`, `resume`,
+  `run`, `delete`. Recurring email delivery; `pause` is reversible and `run`
+  sends one immediately without disturbing the schedule.
+- **`share-links:*` (6)** — `create`, `list`, `get`, `enable`, `disable`,
+  `delete`. Client-facing links that need no ContentStudio account, optionally
+  password-protected and pinned to a fixed date range. `disable` revokes a link
+  without deleting it, so the URL can be restored rather than reissued.
+
+### Competitor benchmarking
+
+- **`competitors:search`** to find a page to track, **`competitor-reports:*`**
+  (`create`, `list`, `get`, `update`, `delete`) to manage a saved set, and
+  **`competitors:compare`** for the comparison numbers.
+  `competitor-reports:update` replaces the whole competitor set rather than
+  merging into it.
+
+### Ads analytics support
 
 34 more commands under the `analytics:` namespace, tracking the public API's ads
 surface (added after the analytics work below):
@@ -18,7 +43,7 @@ surface (added after the analytics work below):
 `analytics:*-accounts` is how you find an ad account id; every other ads command
 needs one. Still read-only, still one command per endpoint.
 
-## Unreleased — Analytics support
+### Analytics support
 
 99 new commands under the `analytics:` namespace, one per ContentStudio
 public API v1 analytics endpoint, across Facebook, Instagram, YouTube,
@@ -34,7 +59,7 @@ Pinterest, LinkedIn, Google Business Profile, TikTok, and Twitter/X.
 - SKILL.md documents the full command reference and the
   `ANALYTICS_UPSTREAM_ERROR` response shape.
 
-## Unreleased — Instagram trial reels, per-platform overrides, `id` field rename, `platform_overrides` rename
+### Instagram trial reels, per-platform overrides, `id` field rename, `platform_overrides` rename
 
 - `posts:create` / `posts:update`: added `--instagram-trial-reel` (boolean) and
   `--instagram-trial-reel-graduation SS_PERFORMANCE|MANUAL` →
@@ -233,7 +258,7 @@ Notes:
 - Resolves a docs/metadata mismatch: the frontmatter already declared `requires.env: CONTENTSTUDIO_API_KEY`, but the body only documented `auth:login`, so OpenClaw operators were left blocked with no instruction on how to satisfy the gate.
 - No CLI source-code changes — the CLI already reads `CONTENTSTUDIO_API_KEY` from the environment (`src/config.ts`).
 
-## Unreleased — write commands for workspaces/labels/campaigns/team + posts:create fixes
+### write commands for workspaces/labels/campaigns/team + posts:create fixes
 
 - Fixed `posts:create`: now emits top-level `content_category_id` and no longer forces `--account` when `--content-category-id` is supplied (content-category posts derive accounts from the category — previously 422'd). Added `--content-category-id`.
 - `posts:create` now normalizes `--scheduled-at` to the backend's `YYYY-MM-DD HH:MM:SS` (UTC) format, and gained parity flags `--label` (repeatable, max 20), `--campaign-id`, `--approver` (repeatable) + `--approve-option` + `--approval-notes`, and `--facebook-background-id`. `--publish-type` now also accepts `now`.
