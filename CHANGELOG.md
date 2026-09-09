@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.4.1 — Clearer reporting help, and a guard on competitor ids
+
+No behaviour change to any working command; this is about the two mistakes the
+command names invite.
+
+- **A "competitor report" is a saved set, not a document.** `competitor-reports:create`
+  now says so in `--help`, and points at the command that does produce a PDF.
+  `competitor-reports:get` says the same, and that `--wait` belongs to `reports:get`.
+- **`reports:generate --help`** names the command that yields the URL
+  (`reports:get <id> --wait`) instead of only saying "poll", and states that the
+  competitor types take `--competitor-report-id` rather than `--accounts`.
+- **`--competitors` now rejects a competitor-set id.** A set id is a 24-character
+  hex ObjectId; a real page id is numeric. Passing the former created a competitor
+  the network had never heard of, which surfaced minutes later as state `Failed`
+  with nothing explaining why. It is refused at entry, naming the fix.
+- **`share-links:create --help`** distinguishes a live shared dashboard from a
+  generated PDF.
+
 ## 1.4.0 — Bluesky and Threads analytics, competitor reports are generatable
 
 ### Bluesky and Threads analytics (26 commands)
