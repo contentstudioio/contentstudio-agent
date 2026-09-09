@@ -83,6 +83,11 @@ function sleep(ms: number): Promise<void> {
  *  Mirrors ReportPlatformTypes::COMPETITOR in the backend. */
 const COMPETITOR_REPORT_TYPES = ["facebook_competitor", "instagram_competitor"];
 
+/** A Mongo ObjectId — i.e. a competitor-SET id, which is never a valid competitor id.
+ *  Network page/profile ids are numeric on both Facebook and Instagram, so this cannot
+ *  false-positive on a real one. */
+const looksLikeObjectId = (v: string): boolean => /^[0-9a-f]{24}$/i.test(v.trim());
+
 function parseCompetitors(raw: unknown, flag: string): CompetitorEntry[] {
   const text = String(raw ?? "").trim();
   if (!text) throw new ConfigError(`${flag} is required.`);
@@ -109,6 +114,11 @@ function parseCompetitors(raw: unknown, flag: string): CompetitorEntry[] {
           `${flag}[${i}]: competitor_id and name are both required.`,
         );
       }
+      if (looksLikeObjectId(String(e.competitor_id))) {
+        throw new ConfigError(
+          `${flag}[${i}]: "${e.competitor_id}" is a competitor-SET id, not a page id. Page ids are numeric and come from competitors:search.`,
+        );
+      }
       return e as unknown as CompetitorEntry;
     });
   }
@@ -120,8 +130,14 @@ function parseCompetitors(raw: unknown, flag: string): CompetitorEntry[] {
         `${flag}: use 'id:Name,id:Name' or a JSON array. Got "${pair.trim()}".`,
       );
     }
+    const competitorId = pair.slice(0, idx).trim();
+    if (looksLikeObjectId(competitorId)) {
+      throw new ConfigError(
+        `${flag}: "${competitorId}" is a competitor-SET id (from competitor-reports:list), not a page id. Find the page id with: competitors:search "<name>" --platform-type <facebook|instagram>`,
+      );
+    }
     return {
-      competitor_id: pair.slice(0, idx).trim(),
+      competitor_id: competitorId,
       name: pair.slice(idx + 1).trim(),
     };
   });
@@ -318,7 +334,7 @@ export function registerAnalyticsReports<T>(yargs: Argv<T>): Argv<T> {
       )
       .command(
         "reports:get <report_id>",
-        "Read one report's state, and its download URL once ready.",
+        "Read one report's state, and its download URL once ready. Add --wait to poll until it is (export_url stays null until status is completed).",
         (y) =>
           y
             .positional("report_id", { type: "string", demandOption: true })
@@ -363,7 +379,7 @@ export function registerAnalyticsReports<T>(yargs: Argv<T>): Argv<T> {
       )
       .command(
         "reports:generate",
-        "Generate a report. Returns immediately with an id to poll.",
+        "Generate a report. Async: returns an id immediately — the download URL appears later, via `reports:get <id> --wait` or a --callback-url. For facebook_competitor / instagram_competitor pass --competitor-report-id (a set from competitor-reports:list), not --accounts.",
         (y) =>
           y
             .option("name", { type: "string", demandOption: true })
@@ -788,7 +804,7 @@ export function registerAnalyticsReports<T>(yargs: Argv<T>): Argv<T> {
       )
       .command(
         "share-links:create",
-        "Create a link a client can open without a ContentStudio account.",
+        "Create a link a client can open without a ContentStudio account. Shares the LIVE dashboard, not a generated PDF — for a file use reports:generate. --password protects it and --date-range pins the period so the numbers stop moving.",
         (y) =>
           y
             .option("title", { type: "string", demandOption: true })
@@ -1031,7 +1047,7 @@ export function registerAnalyticsReports<T>(yargs: Argv<T>): Argv<T> {
       )
       .command(
         "competitor-reports:get <report_id>",
-        "Read one competitor set.",
+        "Read one competitor set — its competitors and their sync state. This is a saved set, not a generated report: there is no download URL and nothing to poll (--wait belongs to reports:get).",
         (y) => y.positional("report_id", { type: "string", demandOption: true }),
         run(async (argv: any, g) => {
           const { cfg, client } = buildClient(g);
@@ -1059,7 +1075,7 @@ export function registerAnalyticsReports<T>(yargs: Argv<T>): Argv<T> {
       )
       .command(
         "competitor-reports:create",
-        "Create a competitor set to benchmark against.",
+        "Save a competitor set to benchmark against. This creates NO document and no URL — it is the input to a report. Build the PDF with: reports:generate --platform-type facebook_competitor --competitor-report-id <this id>. To view the set in the app instead: /<workspace>/analyze/facebook-competitor/<this id>.",
         (y) =>
           y
             .option("name", { type: "string", demandOption: true })
@@ -1072,7 +1088,7 @@ export function registerAnalyticsReports<T>(yargs: Argv<T>): Argv<T> {
               type: "string",
               demandOption: true,
               describe:
-                "'id:Name,id:Name', or a JSON array of {competitor_id,name}. Ids come from competitors:search.",
+                "'id:Name,id:Name', or a JSON array of {competitor_id,name}. Ids are the NETWORK's own numeric page/profile ids (Nike is 15087023444) from competitors:search — NOT a competitor-set id from competitor-reports:list. Passing a set id creates a competitor the network has never heard of, which silently ends up in state Failed.",
             })
             .option("dry-run", { type: "boolean", default: false }),
         run(async (argv: any, g) => {
