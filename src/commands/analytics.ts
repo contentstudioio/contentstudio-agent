@@ -1,8 +1,12 @@
 /**
  * Analytics report commands — one command per ContentStudio v1 analytics
  * endpoint across Facebook, Instagram, YouTube, Pinterest, LinkedIn, GMB,
- * TikTok, Twitter/X, Meta Ads and Google Ads, plus the cross-network
- * Campaigns & Labels reports (133 endpoints total).
+ * TikTok, Twitter/X, Bluesky, Threads, Meta Ads and Google Ads, plus the
+ * cross-network Campaigns & Labels reports (159 endpoints total).
+ *
+ * Bluesky and Threads publish no impressions or reach, so they have no exposure
+ * endpoints — their shorter command lists are the whole surface those APIs
+ * offer, not coverage still to be filled in.
  *
  * Every analytics endpoint is read-only and returns a report payload rather
  * than a row-based list — so unlike `lookups.ts`/`inbox.ts` there is no
@@ -5860,6 +5864,1042 @@ const ANALYTICS_OPS: AnalyticsOpSpec[] = [
         "name": "media_type",
         "type": "string",
         "required": false
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:bluesky-audience-growth",
+    "fn": "blueskyAnalyticsAudienceGrowth",
+    "desc": "Bluesky follower trend, tracked since connection",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:bluesky-capabilities",
+    "fn": "blueskyAnalyticsCapabilities",
+    "desc": "Which Bluesky metrics are available, and why the rest are not",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:bluesky-engagement",
+    "fn": "blueskyAnalyticsEngagement",
+    "desc": "Bluesky engagement trend by post publish date",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      },
+      {
+        "name": "media_type",
+        "type": "string",
+        "required": false,
+        "description": "Comma-separated media types to include."
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:bluesky-hashtags",
+    "fn": "blueskyAnalyticsHashtags",
+    "desc": "Bluesky top hashtags by engagement",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:bluesky-post",
+    "fn": "blueskyAnalyticsPost",
+    "desc": "Bluesky single post detail",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "post_id",
+        "type": "string",
+        "required": true,
+        "description": "The post record key (rkey)."
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:bluesky-posts-per-days",
+    "fn": "blueskyAnalyticsPostsPerDays",
+    "desc": "Bluesky posting cadence by weekday",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:bluesky-publishing-behaviour",
+    "fn": "blueskyAnalyticsPublishingBehaviour",
+    "desc": "Bluesky publishing behaviour with a per-media-type rollup",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      },
+      {
+        "name": "media_type",
+        "type": "string",
+        "required": false,
+        "description": "Comma-separated media types to include in the time series."
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:bluesky-sorted-top-posts",
+    "fn": "blueskyAnalyticsSortedTopPosts",
+    "desc": "Bluesky paginated post table (default 15)",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false
+      },
+      {
+        "name": "offset",
+        "type": "integer",
+        "required": false,
+        "description": "Number of records to skip for pagination"
+      },
+      {
+        "name": "order_by",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "media_type",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "hashtags",
+        "type": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:bluesky-summary",
+    "fn": "blueskyAnalyticsSummary",
+    "desc": "Bluesky summary KPIs — current vs previous period",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:bluesky-top-posts",
+    "fn": "blueskyAnalyticsTopPosts",
+    "desc": "Bluesky top authored posts (default 3)",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false
+      },
+      {
+        "name": "offset",
+        "type": "integer",
+        "required": false,
+        "description": "Number of records to skip for pagination"
+      },
+      {
+        "name": "order_by",
+        "type": "string",
+        "required": false,
+        "enum": [
+          "engagement",
+          "engagement_rate",
+          "likes",
+          "reposts",
+          "replies",
+          "quotes",
+          "bookmarks",
+          "published_at"
+        ],
+        "description": "Sort metric."
+      },
+      {
+        "name": "media_type",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "hashtags",
+        "type": "string",
+        "required": false,
+        "description": "Comma-separated hashtags, matched case-insensitively."
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:threads-activity",
+    "fn": "threadsAnalyticsActivity",
+    "desc": "Threads account activity — the true per-day series",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:threads-ai-insights",
+    "fn": "threadsAnalyticsAiInsights",
+    "desc": "Threads AI-generated insights",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      },
+      {
+        "name": "type",
+        "type": "string",
+        "required": true,
+        "enum": [
+          "aiInsightsSummary",
+          "aiInsightsDetailed"
+        ],
+        "default": "aiInsightsDetailed",
+        "description": "AI insights type key. `aiInsightsSummary` backs the Overview summary card and `aiInsightsDetailed` the AI Insi"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "default": 5
+      },
+      {
+        "name": "language",
+        "type": "string",
+        "required": false,
+        "default": "en",
+        "description": "Response language (ISO 639-1)"
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:threads-audience-growth",
+    "fn": "threadsAnalyticsAudienceGrowth",
+    "desc": "Threads follower trend, tracked since connection",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:threads-audience-location",
+    "fn": "threadsAnalyticsAudienceLocation",
+    "desc": "Threads follower demographics — country and city",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      },
+      {
+        "name": "breakdown",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:threads-capabilities",
+    "fn": "threadsAnalyticsCapabilities",
+    "desc": "What Threads analytics can and cannot answer",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:threads-demographics",
+    "fn": "threadsAnalyticsDemographics",
+    "desc": "Threads follower demographics — age and gender",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      },
+      {
+        "name": "breakdown",
+        "type": "string",
+        "required": false,
+        "description": "Comma-separated: country, city, age, gender."
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false,
+        "description": "Buckets per breakdown. Matters most for city, which has a long tail."
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:threads-engagement",
+    "fn": "threadsAnalyticsEngagement",
+    "desc": "Threads engagement trend by post publish date",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      },
+      {
+        "name": "media_type",
+        "type": "string",
+        "required": false,
+        "description": "Comma-separated media types to include."
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:threads-hashtags",
+    "fn": "threadsAnalyticsHashtags",
+    "desc": "Threads top hashtags — the tags the author typed",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:threads-post",
+    "fn": "threadsAnalyticsPost",
+    "desc": "A single Threads post by media id",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      },
+      {
+        "name": "post_id",
+        "type": "string",
+        "required": true,
+        "description": "The Threads media id."
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:threads-posts-per-days",
+    "fn": "threadsAnalyticsPostsPerDays",
+    "desc": "Threads posting cadence by weekday",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:threads-posts-per-hours",
+    "fn": "threadsAnalyticsPostsPerHours",
+    "desc": "Threads posting cadence by hour of day",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:threads-publishing-behaviour",
+    "fn": "threadsAnalyticsPublishingBehaviour",
+    "desc": "Threads publishing behaviour and per-media-type breakdown",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      },
+      {
+        "name": "media_type",
+        "type": "string",
+        "required": false,
+        "description": "Comma-separated media types to include."
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:threads-sorted-top-posts",
+    "fn": "threadsAnalyticsSortedTopPosts",
+    "desc": "Threads posts, paged and sorted for a table view",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false
+      },
+      {
+        "name": "offset",
+        "type": "integer",
+        "required": false,
+        "description": "Number of records to skip for pagination"
+      },
+      {
+        "name": "order_by",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "order",
+        "type": "string",
+        "required": false,
+        "enum": [
+          "asc",
+          "desc"
+        ]
+      },
+      {
+        "name": "media_type",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "hashtags",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "topic_tags",
+        "type": "string",
+        "required": false
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:threads-summary",
+    "fn": "threadsAnalyticsSummary",
+    "desc": "Threads summary KPIs — current vs previous period",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:threads-top-posts",
+    "fn": "threadsAnalyticsTopPosts",
+    "desc": "Threads top posts for the period",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "required": false
+      },
+      {
+        "name": "order_by",
+        "type": "string",
+        "required": false,
+        "description": "engagement, engagement_rate, likes, replies, reposts, quotes, views or published_at. Anything else falls back "
+      },
+      {
+        "name": "order",
+        "type": "string",
+        "required": false,
+        "enum": [
+          "asc",
+          "desc"
+        ]
+      },
+      {
+        "name": "media_type",
+        "type": "string",
+        "required": false
+      },
+      {
+        "name": "hashtags",
+        "type": "string",
+        "required": false,
+        "description": "Comma-separated free-text hashtags the author typed."
+      },
+      {
+        "name": "topic_tags",
+        "type": "string",
+        "required": false,
+        "description": "Comma-separated Threads topic tags. A separate filter from hashtags — a topic tag is curated by Meta, not writ"
+      }
+    ]
+  },
+  {
+    "cmd": "analytics:threads-topic-tags",
+    "fn": "threadsAnalyticsTopicTags",
+    "desc": "Threads top topic tags — Meta's curated concept",
+    "params": [
+      {
+        "name": "platform_id",
+        "type": "string",
+        "required": true,
+        "description": "Platform Account ID"
+      },
+      {
+        "name": "start_date",
+        "type": "string",
+        "required": true,
+        "description": "Start of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "end_date",
+        "type": "string",
+        "required": true,
+        "description": "End of the date range (YYYY-MM-DD)"
+      },
+      {
+        "name": "timezone",
+        "type": "string",
+        "required": false,
+        "default": "UTC",
+        "description": "IANA timezone name"
       }
     ]
   }

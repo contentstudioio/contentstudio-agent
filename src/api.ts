@@ -2765,6 +2765,248 @@ export function youtubeAnalyticsPublishingBehaviour(
 // the CLI's standard {ok, data} shape like every other command.
 // ─────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────
+// Analytics — Bluesky and Threads.
+//
+// Same shape as the other per-platform analytics readers above. Both networks publish no
+// impressions or reach, so neither has the exposure endpoints the older platforms do — the
+// endpoint list here is the whole surface, not a subset awaiting more.
+// ─────────────────────────────────────────────────────────────────
+
+/** Bluesky follower trend, tracked since connection */
+export function blueskyAnalyticsAudienceGrowth(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/audience-growth`, analyticsQuery(params));
+}
+
+/** Which Bluesky metrics are available, and why the rest are not */
+export function blueskyAnalyticsCapabilities(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/capabilities`, analyticsQuery(params));
+}
+
+/** Bluesky engagement trend by post publish date */
+export function blueskyAnalyticsEngagement(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/engagement`, analyticsQuery(params));
+}
+
+/** Bluesky top hashtags by engagement */
+export function blueskyAnalyticsHashtags(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/hashtags`, analyticsQuery(params));
+}
+
+/** Bluesky single post detail */
+export function blueskyAnalyticsPost(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/post`, analyticsQuery(params));
+}
+
+/** Bluesky posting cadence by weekday */
+export function blueskyAnalyticsPostsPerDays(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/posts-per-days`, analyticsQuery(params));
+}
+
+/** Bluesky publishing behaviour with a per-media-type rollup */
+export function blueskyAnalyticsPublishingBehaviour(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/publishing-behaviour`, analyticsQuery(params));
+}
+
+/** Bluesky paginated post table (default 15) */
+export function blueskyAnalyticsSortedTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/sorted-top-posts`, analyticsQuery(params));
+}
+
+/** Bluesky summary KPIs — current vs previous period */
+export function blueskyAnalyticsSummary(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/summary`, analyticsQuery(params));
+}
+
+/** Bluesky top authored posts (default 3) */
+export function blueskyAnalyticsTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/bluesky/top-posts`, analyticsQuery(params));
+}
+
+/** Threads account activity — the true per-day series */
+export function threadsAnalyticsActivity(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/activity`, analyticsQuery(params));
+}
+
+/** Threads AI-generated insights */
+export function threadsAnalyticsAiInsights(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/ai-insights`, analyticsQuery(params));
+}
+
+/** Threads follower trend, tracked since connection */
+export function threadsAnalyticsAudienceGrowth(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/audience-growth`, analyticsQuery(params));
+}
+
+/** Threads follower demographics — country and city */
+export function threadsAnalyticsAudienceLocation(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/audience-location`, analyticsQuery(params));
+}
+
+/** What Threads analytics can and cannot answer */
+export function threadsAnalyticsCapabilities(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/capabilities`, analyticsQuery(params));
+}
+
+/** Threads follower demographics — age and gender */
+export function threadsAnalyticsDemographics(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/demographics`, analyticsQuery(params));
+}
+
+/** Threads engagement trend by post publish date */
+export function threadsAnalyticsEngagement(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/engagement`, analyticsQuery(params));
+}
+
+/** Threads top hashtags — the tags the author typed */
+export function threadsAnalyticsHashtags(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/hashtags`, analyticsQuery(params));
+}
+
+/** A single Threads post by media id */
+export function threadsAnalyticsPost(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/post`, analyticsQuery(params));
+}
+
+/** Threads posting cadence by weekday */
+export function threadsAnalyticsPostsPerDays(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/posts-per-days`, analyticsQuery(params));
+}
+
+/** Threads posting cadence by hour of day */
+export function threadsAnalyticsPostsPerHours(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/posts-per-hours`, analyticsQuery(params));
+}
+
+/** Threads publishing behaviour and per-media-type breakdown */
+export function threadsAnalyticsPublishingBehaviour(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/publishing-behaviour`, analyticsQuery(params));
+}
+
+/** Threads posts, paged and sorted for a table view */
+export function threadsAnalyticsSortedTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/sorted-top-posts`, analyticsQuery(params));
+}
+
+/** Threads summary KPIs — current vs previous period */
+export function threadsAnalyticsSummary(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/summary`, analyticsQuery(params));
+}
+
+/** Threads top posts for the period */
+export function threadsAnalyticsTopPosts(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/top-posts`, analyticsQuery(params));
+}
+
+/** Threads top topic tags — Meta's curated concept */
+export function threadsAnalyticsTopicTags(
+  c: Client,
+  workspaceId: string,
+  params: AnalyticsParams,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/threads/topic-tags`, analyticsQuery(params));
+}
+
 /** Platforms accepted as an entity `type` by the optimal-times endpoint. */
 export const OPTIMAL_TIME_PLATFORMS = [
   "facebook",
@@ -2855,7 +3097,7 @@ export async function schedulingOptimalTimes(
 
 // ─────────────────────────────────────────────────────────────────
 // AI images — generation and the image tool set.
-// (added in v1.3.0)
+// (added in v1.5.0)
 //
 //   GET  /workspaces/{w}/ai/images/tools        invocable tools + their inputs
 //   GET  /workspaces/{w}/ai/images/models       models `generate` accepts
@@ -3023,6 +3265,322 @@ export async function invokeImageTool(
   } catch (e) {
     throw imageError(e);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Analytics — reports, schedules, share links, competitors.
+//
+// Report generation is asynchronous: `generateReport` returns as soon as the
+// job is accepted, and the caller polls `getReport` until `status` is
+// `completed` (with `export_url` populated) or `failed`. Passing a
+// `callback_url` asks to be notified instead of polling.
+// ─────────────────────────────────────────────────────────────────
+
+export interface ReportSummary {
+  id: string;
+  name: string | null;
+  platform_type: string | null;
+  status: string;
+  progress: number;
+  export_url: string | null;
+  date: string | null;
+  [k: string]: unknown;
+}
+
+/** What a report can be built from: the types, and the sections each accepts. */
+export function listReportOptions(
+  c: Client,
+  workspaceId: string,
+  params: { platform_type?: string } = {},
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/reports/options`, params);
+}
+
+export function listReports(c: Client, workspaceId: string) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/reports`);
+}
+
+export function getReport(c: Client, workspaceId: string, reportId: string) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/reports/${reportId}`);
+}
+
+export function generateReport(
+  c: Client,
+  workspaceId: string,
+  body: {
+    name: string;
+    platform_type: string;
+    accounts?: string[];
+    sections?: string[];
+    date?: string;
+    timezone?: string;
+    callback_url?: string;
+  },
+) {
+  return c.request<any>("POST", `/workspaces/${workspaceId}/analytics/reports`, {
+    json: body,
+  });
+}
+
+/** Re-run a failed report from its stored definition — nothing to rebuild. */
+export function retryReport(c: Client, workspaceId: string, reportId: string) {
+  return c.request<any>(
+    "POST",
+    `/workspaces/${workspaceId}/analytics/reports/${reportId}/retry`,
+  );
+}
+
+export function deleteReport(c: Client, workspaceId: string, reportId: string) {
+  return c.request<any>(
+    "DELETE",
+    `/workspaces/${workspaceId}/analytics/reports/${reportId}`,
+  );
+}
+
+// ── report schedules ─────────────────────────────────────────────
+
+export function listReportSchedules(c: Client, workspaceId: string) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/report-schedules`);
+}
+
+export function getReportSchedule(c: Client, workspaceId: string, scheduleId: string) {
+  return c.get<any>(
+    `/workspaces/${workspaceId}/analytics/report-schedules/${scheduleId}`,
+  );
+}
+
+export function createReportSchedule(
+  c: Client,
+  workspaceId: string,
+  body: Record<string, unknown>,
+) {
+  return c.request<any>(
+    "POST",
+    `/workspaces/${workspaceId}/analytics/report-schedules`,
+    { json: body },
+  );
+}
+
+export function updateReportSchedule(
+  c: Client,
+  workspaceId: string,
+  scheduleId: string,
+  body: Record<string, unknown>,
+) {
+  return c.request<any>(
+    "PUT",
+    `/workspaces/${workspaceId}/analytics/report-schedules/${scheduleId}`,
+    { json: body },
+  );
+}
+
+/** Pause (active=false) or resume (active=true) without deleting the schedule. */
+export function setReportScheduleState(
+  c: Client,
+  workspaceId: string,
+  scheduleId: string,
+  active: boolean,
+) {
+  return c.request<any>(
+    "PUT",
+    `/workspaces/${workspaceId}/analytics/report-schedules/${scheduleId}/state`,
+    { json: { active } },
+  );
+}
+
+/** Send one run now, without waiting for the next scheduled slot. */
+export function runReportScheduleNow(
+  c: Client,
+  workspaceId: string,
+  scheduleId: string,
+) {
+  return c.request<any>(
+    "POST",
+    `/workspaces/${workspaceId}/analytics/report-schedules/${scheduleId}/run`,
+  );
+}
+
+export function deleteReportSchedule(
+  c: Client,
+  workspaceId: string,
+  scheduleId: string,
+) {
+  return c.request<any>(
+    "DELETE",
+    `/workspaces/${workspaceId}/analytics/report-schedules/${scheduleId}`,
+  );
+}
+
+// ── share links ──────────────────────────────────────────────────
+
+export function listShareLinks(c: Client, workspaceId: string) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/share-links`);
+}
+
+export function getShareLink(c: Client, workspaceId: string, id: string) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/share-links/${id}`);
+}
+
+export function createShareLink(
+  c: Client,
+  workspaceId: string,
+  body: Record<string, unknown>,
+) {
+  return c.request<any>("POST", `/workspaces/${workspaceId}/analytics/share-links`, {
+    json: body,
+  });
+}
+
+/**
+ * PUT replaces the link, so `title` and `platform` are required even when only
+ * one other field is changing — send the whole configuration.
+ */
+export function updateShareLink(
+  c: Client,
+  workspaceId: string,
+  id: string,
+  body: Record<string, unknown>,
+) {
+  return c.request<any>(
+    "PUT",
+    `/workspaces/${workspaceId}/analytics/share-links/${id}`,
+    { json: body },
+  );
+}
+
+/** Revoke a link's access without deleting it — reversible. */
+export function setShareLinkDisabled(
+  c: Client,
+  workspaceId: string,
+  id: string,
+  isDisabled: boolean,
+) {
+  return c.request<any>(
+    "PUT",
+    `/workspaces/${workspaceId}/analytics/share-links/${id}/state`,
+    { json: { is_disabled: isDisabled } },
+  );
+}
+
+export function deleteShareLink(c: Client, workspaceId: string, id: string) {
+  return c.request<any>(
+    "DELETE",
+    `/workspaces/${workspaceId}/analytics/share-links/${id}`,
+  );
+}
+
+// ── competitors ──────────────────────────────────────────────────
+
+/**
+ * Find a page to track. A page that cannot be tracked comes back as an empty
+ * `results` with `not_trackable` and a `reason` — a successful read, not an error.
+ */
+export function searchCompetitors(
+  c: Client,
+  workspaceId: string,
+  params: { platform_type: string; search: string },
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/analytics/competitor-search`, params);
+}
+
+export function listCompetitorReports(
+  c: Client,
+  workspaceId: string,
+  params: { platforms?: string } = {},
+) {
+  return c.get<any>(
+    `/workspaces/${workspaceId}/analytics/competitor-reports`,
+    params,
+  );
+}
+
+export function getCompetitorReport(
+  c: Client,
+  workspaceId: string,
+  reportId: string,
+) {
+  return c.get<any>(
+    `/workspaces/${workspaceId}/analytics/competitor-reports/${reportId}`,
+  );
+}
+
+/**
+ * Each competitor is an object with at least `competitor_id` and `name` — take
+ * them from competitor-search. Bare id strings are rejected by the API and
+ * would otherwise be dropped without a word.
+ */
+export interface CompetitorEntry {
+  competitor_id: string;
+  name: string;
+  slug?: string;
+  image?: string;
+  type?: string;
+}
+
+export function createCompetitorReport(
+  c: Client,
+  workspaceId: string,
+  body: { name: string; platform_type: string; competitors: CompetitorEntry[] },
+) {
+  return c.request<any>(
+    "POST",
+    `/workspaces/${workspaceId}/analytics/competitor-reports`,
+    { json: body },
+  );
+}
+
+export function updateCompetitorReport(
+  c: Client,
+  workspaceId: string,
+  reportId: string,
+  body: { name: string; platform_type: string; competitors: CompetitorEntry[] },
+) {
+  return c.request<any>(
+    "PUT",
+    `/workspaces/${workspaceId}/analytics/competitor-reports/${reportId}`,
+    { json: body },
+  );
+}
+
+export function deleteCompetitorReport(
+  c: Client,
+  workspaceId: string,
+  reportId: string,
+) {
+  return c.request<any>(
+    "DELETE",
+    `/workspaces/${workspaceId}/analytics/competitor-reports/${reportId}`,
+  );
+}
+
+/** Competitor comparison reads, keyed by the saved report. */
+export type CompetitorMetric =
+  | "data-table-metrics"
+  | "post-engagement-by-competitor"
+  | "followers-growth-comparison"
+  | "posting-activity-graph-by-types"
+  | "top-and-least-performing-posts"
+  | "top-hashtags"
+  | "biography-data";
+
+export function getCompetitorComparison(
+  c: Client,
+  workspaceId: string,
+  platform: "facebook" | "instagram",
+  metric: CompetitorMetric,
+  params: {
+    competitor_report_id: string;
+    start_date: string;
+    end_date: string;
+    timezone?: string;
+    limit?: number;
+    sort_order?: string;
+  },
+) {
+  return c.get<any>(
+    `/workspaces/${workspaceId}/analytics/${platform}/competitor/${metric}`,
+    params,
+  );
 }
 
 // Re-export ContentStudioError for convenience in commands.

@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.0 — AI image generation
+## 1.5.0 — AI image generation
 
 The public API gained an AI image surface, so the CLI and the agent skill cover
 it: five endpoints under `/workspaces/{w}/ai/...`, wrapped as an `images:*`
@@ -85,7 +85,84 @@ All of them take `--dry-run`, `--json` and `--timeout <seconds>`.
   neither, the same way `accepts_instructions` on `headshot` / `face-swap` is
   unreachable when only `product-image` declares `instructions`.
 
-## Unreleased — Ads analytics support
+## 1.4.1 — Clearer reporting help, and a guard on competitor ids
+
+No behaviour change to any working command; this is about the two mistakes the
+command names invite.
+
+- **A "competitor report" is a saved set, not a document.** `competitor-reports:create`
+  now says so in `--help`, and points at the command that does produce a PDF.
+  `competitor-reports:get` says the same, and that `--wait` belongs to `reports:get`.
+- **`reports:generate --help`** names the command that yields the URL
+  (`reports:get <id> --wait`) instead of only saying "poll", and states that the
+  competitor types take `--competitor-report-id` rather than `--accounts`.
+- **`--competitors` now rejects a competitor-set id.** A set id is a 24-character
+  hex ObjectId; a real page id is numeric. Passing the former created a competitor
+  the network had never heard of, which surfaced minutes later as state `Failed`
+  with nothing explaining why. It is refused at entry, naming the fix.
+- **`share-links:create --help`** distinguishes a live shared dashboard from a
+  generated PDF.
+
+## 1.4.0 — Bluesky and Threads analytics, competitor reports are generatable
+
+### Bluesky and Threads analytics (26 commands)
+
+The `analytics:` namespace covered eight networks and stopped there; both newer
+platforms had none, despite the API serving them. Added one command per endpoint,
+same shape as every other platform:
+
+- **`analytics:bluesky-*` (10)** — `summary`, `audience-growth`, `engagement`,
+  `publishing-behaviour`, `top-posts`, `sorted-top-posts`, `post`,
+  `posts-per-days`, `hashtags`, `capabilities`.
+- **`analytics:threads-*` (16)** — the same, plus `activity` (the true per-day
+  account series, distinct from engagement-by-publish-date), `posts-per-hours`,
+  `topic-tags` (Meta's curated tags, counted separately from hashtags),
+  `demographics`, `audience-location` and `ai-insights`.
+
+Neither network publishes impressions or reach, so neither has the exposure
+endpoints the older platforms do. That is the whole surface, not a subset.
+
+### Competitor reports are generatable
+
+`reports:generate` gains **`--competitor-report-id`**, required for the
+`facebook_competitor` and `instagram_competitor` types. Those are built from a
+saved competitor set (see `competitor-reports:list`) rather than from connected
+accounts, and 1.3.0 shipped them as generatable types with no way to name the
+set — the id had to go somewhere, `--accounts` was the natural guess, and it was
+dropped silently: the call returned 202 and the report failed minutes later with
+"Combined report generation failed". The CLI now refuses that up front and names
+the flag.
+
+Requires the matching API change (`competitor_report_id` on the report-generate
+request). Against an older API the field is ignored and competitor reports still
+fail, so upgrade the CLI only once that has shipped.
+
+## 1.3.0 — Analytics: reports, schedules, share links, competitors, ads
+
+### Reports, schedules and share links
+
+Three new command groups, all under the analytics umbrella:
+
+- **`reports:*` (6)** — `options`, `generate`, `get`, `list`, `retry`, `delete`.
+  Generation is asynchronous: `reports:generate` returns an id immediately and
+  `reports:get <id> --wait` polls until the download URL is ready.
+- **`report-schedules:*` (7)** — `create`, `list`, `get`, `pause`, `resume`,
+  `run`, `delete`. Recurring email delivery; `pause` is reversible and `run`
+  sends one immediately without disturbing the schedule.
+- **`share-links:*` (6)** — `create`, `list`, `get`, `enable`, `disable`,
+  `delete`. Client-facing links that need no ContentStudio account, optionally
+  password-protected and pinned to a fixed date range. `disable` revokes a link
+  without deleting it, so the URL can be restored rather than reissued.
+
+### Competitor benchmarking
+
+- **`competitors:search`** to find a page to track, **`competitor-reports:*`**
+  (`create`, `list`, `get`, `update`, `delete`) to manage a saved set, and
+  **`competitors:compare`** for the comparison numbers.
+  `competitor-reports:update` replaces the whole competitor set rather than
+  merging into it.
+
+### Ads analytics support
 
 34 more commands under the `analytics:` namespace, tracking the public API's ads
 surface (added after the analytics work below):
@@ -103,7 +180,7 @@ surface (added after the analytics work below):
 `analytics:*-accounts` is how you find an ad account id; every other ads command
 needs one. Still read-only, still one command per endpoint.
 
-## Unreleased — Analytics support
+### Analytics support
 
 99 new commands under the `analytics:` namespace, one per ContentStudio
 public API v1 analytics endpoint, across Facebook, Instagram, YouTube,
@@ -119,7 +196,7 @@ Pinterest, LinkedIn, Google Business Profile, TikTok, and Twitter/X.
 - SKILL.md documents the full command reference and the
   `ANALYTICS_UPSTREAM_ERROR` response shape.
 
-## Unreleased — Instagram trial reels, per-platform overrides, `id` field rename, `platform_overrides` rename
+### Instagram trial reels, per-platform overrides, `id` field rename, `platform_overrides` rename
 
 - `posts:create` / `posts:update`: added `--instagram-trial-reel` (boolean) and
   `--instagram-trial-reel-graduation SS_PERFORMANCE|MANUAL` →
@@ -318,7 +395,7 @@ Notes:
 - Resolves a docs/metadata mismatch: the frontmatter already declared `requires.env: CONTENTSTUDIO_API_KEY`, but the body only documented `auth:login`, so OpenClaw operators were left blocked with no instruction on how to satisfy the gate.
 - No CLI source-code changes — the CLI already reads `CONTENTSTUDIO_API_KEY` from the environment (`src/config.ts`).
 
-## Unreleased — write commands for workspaces/labels/campaigns/team + posts:create fixes
+### write commands for workspaces/labels/campaigns/team + posts:create fixes
 
 - Fixed `posts:create`: now emits top-level `content_category_id` and no longer forces `--account` when `--content-category-id` is supplied (content-category posts derive accounts from the category — previously 422'd). Added `--content-category-id`.
 - `posts:create` now normalizes `--scheduled-at` to the backend's `YYYY-MM-DD HH:MM:SS` (UTC) format, and gained parity flags `--label` (repeatable, max 20), `--campaign-id`, `--approver` (repeatable) + `--approve-option` + `--approval-notes`, and `--facebook-background-id`. `--publish-type` now also accepts `now`.

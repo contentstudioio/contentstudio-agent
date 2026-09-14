@@ -14,6 +14,7 @@ import { hideBin } from "yargs/helpers";
 
 import { VERSION } from "./api";
 import { registerAnalytics } from "./commands/analytics";
+import { registerAnalyticsReports } from "./commands/analyticsReports";
 import { registerAuth } from "./commands/auth";
 import { registerComments } from "./commands/comments";
 import { registerCrud } from "./commands/crud";
@@ -70,5 +71,6 @@ cli = registerImages(cli);
 cli = registerComments(cli);
 cli = registerInbox(cli);
 cli = registerAnalytics(cli);
+cli = registerAnalyticsReports(cli);
 
 cli.parse();

@@ -1,7 +1,7 @@
 ---
 name: contentstudio
 description: ContentStudio is a tool to schedule social-media posts, manage the social inbox, and pull performance analytics across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile. Use when the user wants to list/create/delete/approve posts, find the best time to post, generate or edit images with AI, read and reply to DMs, comments and reviews, manage media, audit workspaces, accounts, campaigns, labels, categories, or team-members, or pull analytics reports (top posts, engagement, impressions, follower growth, AI insights, etc.) on their ContentStudio account.
-version: 1.3.0
+version: 1.5.0
 homepage: https://api.contentstudio.io/guide
 metadata: {"openclaw":{"emoji":"📅","requires":{"bins":["contentstudio"],"env":["CONTENTSTUDIO_API_KEY"]}}}
 ---
@@ -850,6 +850,60 @@ is wrong.
 | `analytics:campaigns-labels-posts` | Per-post table for the selected campaigns & labels | --start-date, --end-date |
 | `analytics:campaigns-labels-summary` | Campaign & label summary KPIs — current vs previous period | --start-date, --end-date |
 | `analytics:campaigns-labels-top-posts` | Top 5 posts per network for the selected campaigns & labels | --start-date, --end-date |
+
+### Analytics: reports, schedules, share links
+
+Reporting is asynchronous. `reports:generate` returns an id straight away and
+the work happens elsewhere, so never treat the create response as a finished
+report — poll `reports:get <id> --wait`, or pass `--callback-url` to be told
+instead of asking. A report is done when `status` is `completed` and
+`export_url` is populated; `failed` is terminal too, and `reports:retry` re-runs
+it from the stored definition without rebuilding the request.
+
+Start from `reports:options` rather than guessing: it returns the report types
+this workspace can build and the sections each one accepts, and it is the same
+catalogue the product's own section selector reads.
+
+**The two competitor types take a competitor set, not accounts.**
+`facebook_competitor` and `instagram_competitor` are built from a saved set, so
+they need `--competitor-report-id` (from `competitor-reports:list`) and ignore
+`--accounts`. Putting the set id in `--accounts` is the natural mistake and is
+refused before the call goes out — it used to be accepted, dropped, and surface
+minutes later as "Combined report generation failed".
+
+**Share links are how a client sees a report without an account.** Create one
+with `share-links:create`; `--password` protects it, `--date-range` pins the
+period so the numbers stop moving, and omitting the range leaves it rolling.
+There is no expiry — a link lives until you disable or delete it, so prefer
+`share-links:disable` (reversible) over `share-links:delete` when a client
+engagement pauses. A share link is independent of any generated report: it shows
+the live dashboard, not a PDF.
+
+`report-schedules:run` asks for an immediate send, but the API acknowledges the
+request without returning a report id. Confirm with `report-schedules:get` and
+check `last_run_at` moved before telling the user the report went out.
+
+### Analytics: competitors
+
+Two different things share the word "report". A **competitor report** is a saved
+*set* of competitors to benchmark against — it has no status and produces no
+file. The comparison numbers are read separately, with `competitors:compare`.
+
+Provisioning order matters: `competitors:search` first, because a competitor is
+an object (`competitor_id` plus `name`), not a bare id. `competitor-reports:create`
+accepts the shorthand `--competitors 'id:Name,id:Name'` or a JSON array, and
+expands it for you.
+
+A page that cannot be tracked comes back as an empty result with a `reason` —
+that is a successful read, not an error. Tell the user which page could not be
+tracked and why, rather than reporting a failure.
+
+`competitor-reports:update` **replaces** the set, so send every competitor you
+want to keep, not just the new one.
+
+When reading comparisons, respect each row's `state`. Only `Processed` means a
+complete measurement for the period — a competitor in any other state has zeros
+that mean *not measured*, not *zero engagement*. Never present those as a result.
 
 ---
 
