@@ -844,3 +844,145 @@ describe("scheduling:best-times validates before touching the network", () => {
     }
   });
 });
+
+describe("images commands", () => {
+  function withCfg() {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({ api_key: "cs_INVALID", active_workspace_id: "ws-1" }),
+    );
+    return { CONTENTSTUDIO_CONFIG_PATH: cfgFile };
+  }
+
+  // The story's coverage rule: a tool the API exposes but the CLI does not is a
+  // defect, so the command list is asserted rather than eyeballed.
+  it("lists every image command in --help", () => {
+    const r = run(["--help"], { CONTENTSTUDIO_CONFIG_PATH: cfgFile });
+    expect(r.code).toBe(0);
+    for (const cmd of [
+      "images:tools",
+      "images:models",
+      "images:brand",
+      "images:generate",
+      "images:tool",
+      "images:product-image",
+      "images:headshot",
+      "images:face-swap",
+      "images:outfit-swap",
+      "images:upscale",
+      "images:remove-background",
+    ]) {
+      expect(r.stdout, cmd).toContain(cmd);
+    }
+  });
+
+  it("images:generate --dry-run builds the body and hits no network", () => {
+    const r = run(
+      [
+        "--json",
+        "images:generate",
+        "-p",
+        "autumn coffee flat-lay",
+        "--dimensions",
+        "square_hd",
+        "--use-brand",
+        "--no-enhance-prompt",
+        "--dry-run",
+      ],
+      withCfg(),
+    );
+    expect(r.code).toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.ok).toBe(true);
+    expect(d.data.endpoint).toBe("POST /workspaces/ws-1/ai/images/generate");
+    expect(d.data.body).toEqual({
+      prompt: "autumn coffee flat-lay",
+      dimensions: "square_hd",
+      use_brand: true,
+      enhance_prompt: false,
+    });
+  });
+
+  it("images:face-swap --dry-run maps flags onto the tool's field names", () => {
+    const r = run(
+      [
+        "--json",
+        "images:face-swap",
+        "--target-image-url",
+        "https://example.com/a.png",
+        "--face-image-url",
+        "https://example.com/b.png",
+        "--resolution",
+        "2k",
+        "--dry-run",
+      ],
+      withCfg(),
+    );
+    expect(r.code).toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.data.endpoint).toBe("POST /workspaces/ws-1/ai/images/tools/face-swap");
+    expect(d.data.body).toEqual({
+      target_image_url: "https://example.com/a.png",
+      face_image_url: "https://example.com/b.png",
+      resolution: "2k",
+    });
+  });
+
+  it("images:tool passes an arbitrary tool body through", () => {
+    const r = run(
+      [
+        "--json",
+        "images:tool",
+        "image-to-image",
+        "--body",
+        '{"prompt":"snowy dusk","attachments":["https://example.com/base.png"]}',
+        "--dry-run",
+      ],
+      withCfg(),
+    );
+    expect(r.code).toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.data.endpoint).toBe(
+      "POST /workspaces/ws-1/ai/images/tools/image-to-image",
+    );
+    expect(d.data.body.attachments).toEqual(["https://example.com/base.png"]);
+  });
+
+  it("rejects a local path where an image URL is required", () => {
+    const r = run(
+      ["--json", "images:upscale", "--image-url", "./hero.png", "--dry-run"],
+      withCfg(),
+    );
+    expect(r.code).not.toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.error.type).toBe("ConfigError");
+    expect(d.error.message).toContain("media:upload");
+  });
+
+  it("rejects a prompt over the API's 1000-character limit", () => {
+    const r = run(
+      ["--json", "images:generate", "-p", "x".repeat(1001), "--dry-run"],
+      withCfg(),
+    );
+    expect(r.code).not.toBe(0);
+    expect(JSON.parse(r.stdout).error.message).toContain("limit is 1000");
+  });
+
+  it("rejects a dimensions preset the API does not publish", () => {
+    const r = run(
+      ["--json", "images:generate", "-p", "x", "--dimensions", "wide", "--dry-run"],
+      withCfg(),
+    );
+    expect(r.code).not.toBe(0);
+    expect(r.stderr).toContain("square_hd");
+  });
+
+  it("rejects a non-positive --timeout", () => {
+    const r = run(
+      ["--json", "images:generate", "-p", "x", "--timeout", "0", "--dry-run"],
+      withCfg(),
+    );
+    expect(r.code).not.toBe(0);
+    expect(JSON.parse(r.stdout).error.type).toBe("ConfigError");
+  });
+});

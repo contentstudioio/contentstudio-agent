@@ -19,6 +19,9 @@ import {
   getInboxContact,
   inboxSummary,
   listInboxPostComments,
+  invokeImageTool,
+  listImageModels,
+  listImageTools,
   listInboxTags,
   listInboxMessages,
   markInboxElementRead,
@@ -36,6 +39,7 @@ import {
   deleteLabel,
   deletePost,
   deleteWorkspace,
+  generateImage,
   getMe,
   listAccounts,
   listApprovalWorkflows,
@@ -59,6 +63,7 @@ import {
   AuthError,
   BackendError,
   ConfigError,
+  CreditLimitError,
   NotFoundError,
   ConflictError,
   RateLimitError,
@@ -1257,5 +1262,125 @@ describe("Scheduling — optimal posting times", () => {
     await expect(
       schedulingOptimalTimes(mkClient(), "ws-1"),
     ).rejects.toBeInstanceOf(BackendError);
+  });
+});
+
+describe("AI images", () => {
+  const W = `${PATH}/workspaces/ws-1`;
+
+  const result = {
+    media_id: "66f1a2b3c4d5e6f708192a3b",
+    url: "https://storage.googleapis.com/contentstudio/generated.png",
+    width: 1024,
+    height: 1024,
+    mime_type: "image/png",
+    model_used: "nano-banana-pro",
+    brand_applied: true,
+    credits: { consumed: 1, available: 412 },
+    persist_error: null,
+  };
+
+  it("unwraps the tools and models lists to plain arrays", async () => {
+    nock(BASE)
+      .get(`${W}/ai/images/tools`)
+      .reply(200, envelope({ tools: [{ key: "upscale", label: "Upscale" }] }));
+    nock(BASE)
+      .get(`${W}/ai/images/models`)
+      .reply(200, envelope({ models: ["nano-banana-pro", "gpt-image-2"] }));
+
+    expect(await listImageTools(mkClient(), "ws-1")).toEqual([
+      { key: "upscale", label: "Upscale" },
+    ]);
+    expect(await listImageModels(mkClient(), "ws-1")).toEqual([
+      "nano-banana-pro",
+      "gpt-image-2",
+    ]);
+  });
+
+  it("treats an unreachable catalogue as an empty list, not a crash", async () => {
+    nock(BASE).get(`${W}/ai/images/tools`).reply(200, envelope({}));
+    expect(await listImageTools(mkClient(), "ws-1")).toEqual([]);
+  });
+
+  it("POSTs the generate body verbatim and returns the media id", async () => {
+    let received: any;
+    nock(BASE)
+      .post(`${W}/ai/images/generate`, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, envelope(result));
+
+    const res = await generateImage(mkClient(), "ws-1", {
+      prompt: "autumn coffee flat-lay",
+      dimensions: "square_hd",
+      use_brand: true,
+    });
+    expect(received).toEqual({
+      prompt: "autumn coffee flat-lay",
+      dimensions: "square_hd",
+      use_brand: true,
+    });
+    expect(res.media_id).toBe("66f1a2b3c4d5e6f708192a3b");
+  });
+
+  it("percent-encodes the tool key into the path", async () => {
+    nock(BASE)
+      .post(`${W}/ai/images/tools/remove-background`, {
+        image_url: "https://example.com/p.png",
+      })
+      .reply(200, envelope(result));
+    const res = await invokeImageTool(mkClient(), "ws-1", "remove-background", {
+      image_url: "https://example.com/p.png",
+    });
+    expect(res.model_used).toBe("nano-banana-pro");
+  });
+
+  // The point of the error map: without it a 403 for exhausted image credits is
+  // an AuthError telling the caller to re-run auth:login, which can never help.
+  it("re-types exhausted image credits away from AuthError", async () => {
+    nock(BASE).post(`${W}/ai/images/generate`).reply(403, {
+      status: false,
+      message: "Not enough AI image credits.",
+      error_code: "IMAGE_CREDIT_LIMIT_EXCEEDED",
+      brand_applied: false,
+    });
+    const e = await generateImage(mkClient(), "ws-1", { prompt: "x" }).catch((x) => x);
+    expect(e).toBeInstanceOf(CreditLimitError);
+    expect(e.exitCode).toBe(8);
+    expect(e.message).toBe("Not enough AI image credits.");
+    expect(e.hint).toMatch(/image credits/i);
+  });
+
+  it("gives a policy refusal, a rejected input and a missing tool distinct hints", async () => {
+    const cases: Array<[number, string, any, RegExp]> = [
+      [422, "CONTENT_BLOCKED", ValidationError, /rephrase/i],
+      [422, "IMAGE_INPUT_REJECTED", ValidationError, /publicly fetchable/i],
+      [404, "TOOL_NOT_FOUND", NotFoundError, /images:tools/],
+      [429, "RATE_LIMIT_EXCEEDED", RateLimitError, /30 requests\/minute/],
+      [504, "AI_SERVICE_TIMEOUT", BackendError, /120s/],
+      [502, "AI_SERVICE_UNAVAILABLE", BackendError, /Retry promptly/],
+    ];
+    for (const [status, code, cls, hint] of cases) {
+      nock(BASE)
+        .post(`${W}/ai/images/tools/upscale`)
+        .reply(status, { status: false, message: `msg ${code}`, error_code: code });
+      const e = await invokeImageTool(mkClient(), "ws-1", "upscale", {
+        image_url: "https://example.com/a.png",
+      }).catch((x) => x);
+      expect(e, code).toBeInstanceOf(cls);
+      expect(e.message, code).toBe(`msg ${code}`);
+      expect(e.hint, code).toMatch(hint);
+    }
+  });
+
+  it("leaves an error with no image error_code on its plain HTTP mapping", async () => {
+    // A 403 with no error_code is a membership / API-request-credit problem, not
+    // an image-credit one, and must keep pointing at auth.
+    nock(BASE)
+      .post(`${W}/ai/images/generate`)
+      .reply(403, { status: false, message: "No access to this workspace" });
+    const e = await generateImage(mkClient(), "ws-1", { prompt: "x" }).catch((x) => x);
+    expect(e).toBeInstanceOf(AuthError);
   });
 });
