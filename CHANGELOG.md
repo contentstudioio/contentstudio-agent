@@ -19,7 +19,187 @@ public API v1 AI video endpoints.
 - `ai-video:generate`, `ai-video:run-tool`, and `ai-video:cancel-job` all
   support `--dry-run` and are on the SKILL.md mutating-confirmation list.
 
-## Unreleased — Analytics support
+## 1.5.0 — AI image generation
+
+The public API gained an AI image surface, so the CLI and the agent skill cover
+it: five endpoints under `/workspaces/{w}/ai/...`, wrapped as an `images:*`
+command group. Generation is synchronous and every success returns a `media_id`
+that `posts:create --media-id` takes unchanged — prompt to scheduled post in two
+commands.
+
+### Discovery
+
+- `images:tools` — the image tools this API can invoke, with each one's required
+  inputs and its control options. An empty list means the catalogue is
+  temporarily unreachable, not that the workspace has no tools.
+- `images:models` — the model identifiers `images:generate` accepts. A curated
+  list, narrower than the models the web app offers.
+- `images:brand` — `{configured, enabled}`: whether `--use-brand` will apply
+  anything. Status only; brand content is never returned, and there is no brand
+  CRUD on this API.
+
+### Generation
+
+- `images:generate -p "<prompt>"` — prompt → image, saved to the media library.
+  Flags: `--model`, `--dimensions` (`square`, `square_hd`, `portrait_4_5`,
+  `landscape_16_9`), `--use-brand`, `--enhance-prompt` / `--no-enhance-prompt`.
+- `images:generate -p "<edit>" --image-url <url>` — edit an existing image
+  instead. The prompt describes the change. `--dimensions` does not apply on this
+  path (the source geometry wins) and `brand_applied` is always `false`.
+- One command per dedicated tool: `images:product-image`, `images:headshot`,
+  `images:face-swap`, `images:outfit-swap`, `images:upscale`,
+  `images:remove-background`. Flag names mirror the API's field names
+  (`--target-image-url`, `--face-image-url`, `--product-image-url`, …).
+- `images:tool <tool_key> --body '<json>'` — any tool the API exposes, with its
+  full control set. This is how `image-to-image`'s `style`, `image_resolution`,
+  `image_quality`, multiple `attachments` and `reference_image_urls` are reached,
+  and it keeps working when a tool is added upstream without a CLI release.
+
+All of them take `--dry-run`, `--json` and `--timeout <seconds>`.
+
+### Notes
+
+- **`media_id` is the durable handle; `url` is not.** `url` is for previews and
+  for chaining one tool into the next. A `url` returned alongside a
+  `persist_error` is a temporary provider link — the image was generated *and
+  charged* but not saved, so `media_id` is `null`. Human mode warns about this
+  explicitly; `media_storage_full` says retrying will fail the same way.
+- **The generating calls do not auto-retry.** Everywhere else the client retries
+  `429`/`5xx` twice; here it does not, because these POSTs are billable and not
+  idempotent and a retry can consume a second image credit. The three discovery
+  commands retry normally.
+- **Timeout is 150s, above the server's own 120s deadline**, so a slow model
+  surfaces as the API's `AI_SERVICE_TIMEOUT` (which names the cause and costs no
+  image credits) rather than an opaque local abort. `--timeout <seconds>`
+  overrides it.
+- **Error codes are mapped to typed errors with actionable hints**, because the
+  bare HTTP mapping was actively misleading: exhausted image credits are a `403`,
+  which would otherwise read as an `AuthError` and send an agent into an
+  `auth:login` loop that can never help. New `CreditLimitError` (exit code 8) for
+  `IMAGE_CREDIT_LIMIT_EXCEEDED`; `CONTENT_BLOCKED` and `IMAGE_INPUT_REJECTED`
+  render as `ValidationError` with distinct copy (rephrase the prompt vs. fix the
+  image URL); `TOOL_NOT_FOUND` points at `images:tools`; `RATE_LIMIT_EXCEEDED`
+  says the bucket is 30/min and shared with the app's own AI usage. A `403` with
+  no `error_code` is a membership / API-request-credit problem and stays an
+  `AuthError`.
+- **Input URLs are validated client-side** for the `http(s)` scheme and the 2048
+  character cap, as are the 1000-character `--prompt` / `--instructions` limits
+  and the `--dimensions` presets — a rejected call still costs an API request
+  credit, and a local path is a typo rather than a decision.
+- Every URL passed in is downloaded by the image service, so it must be publicly
+  reachable. The CLI's error text points at `media:upload --file` for local files.
+- Video tools (`image-to-video`, `motion-control`, `lip-sync`,
+  `talking-avatar`) are not exposed on this API and answer `TOOL_NOT_FOUND`.
+- `buildClient` now takes optional `ClientOpts`, which is how the image group
+  raises the timeout and switches retries off. No change for existing callers.
+- README gained an **AI Images** section; SKILL.md gained an **AI images**
+  command reference and a generate-then-publish recipe.
+- `images:tools` shows the command and flags to run each tool with, plus each
+  control's allowed options. It deliberately does **not** print the
+  descriptor's `inputs[].name`: those are the underlying tool's slot names
+  (`image`, `target_image`, `product`), neither wire fields nor flags, so
+  printing them pointed readers at flags that do not exist. The footer says
+  outright that a control with no matching flag cannot be sent — `upscale`
+  advertises `model` and `upscale_factor`, and the API's tool payload accepts
+  neither, the same way `accepts_instructions` on `headshot` / `face-swap` is
+  unreachable when only `product-image` declares `instructions`.
+
+## 1.4.1 — Clearer reporting help, and a guard on competitor ids
+
+No behaviour change to any working command; this is about the two mistakes the
+command names invite.
+
+- **A "competitor report" is a saved set, not a document.** `competitor-reports:create`
+  now says so in `--help`, and points at the command that does produce a PDF.
+  `competitor-reports:get` says the same, and that `--wait` belongs to `reports:get`.
+- **`reports:generate --help`** names the command that yields the URL
+  (`reports:get <id> --wait`) instead of only saying "poll", and states that the
+  competitor types take `--competitor-report-id` rather than `--accounts`.
+- **`--competitors` now rejects a competitor-set id.** A set id is a 24-character
+  hex ObjectId; a real page id is numeric. Passing the former created a competitor
+  the network had never heard of, which surfaced minutes later as state `Failed`
+  with nothing explaining why. It is refused at entry, naming the fix.
+- **`share-links:create --help`** distinguishes a live shared dashboard from a
+  generated PDF.
+
+## 1.4.0 — Bluesky and Threads analytics, competitor reports are generatable
+
+### Bluesky and Threads analytics (26 commands)
+
+The `analytics:` namespace covered eight networks and stopped there; both newer
+platforms had none, despite the API serving them. Added one command per endpoint,
+same shape as every other platform:
+
+- **`analytics:bluesky-*` (10)** — `summary`, `audience-growth`, `engagement`,
+  `publishing-behaviour`, `top-posts`, `sorted-top-posts`, `post`,
+  `posts-per-days`, `hashtags`, `capabilities`.
+- **`analytics:threads-*` (16)** — the same, plus `activity` (the true per-day
+  account series, distinct from engagement-by-publish-date), `posts-per-hours`,
+  `topic-tags` (Meta's curated tags, counted separately from hashtags),
+  `demographics`, `audience-location` and `ai-insights`.
+
+Neither network publishes impressions or reach, so neither has the exposure
+endpoints the older platforms do. That is the whole surface, not a subset.
+
+### Competitor reports are generatable
+
+`reports:generate` gains **`--competitor-report-id`**, required for the
+`facebook_competitor` and `instagram_competitor` types. Those are built from a
+saved competitor set (see `competitor-reports:list`) rather than from connected
+accounts, and 1.3.0 shipped them as generatable types with no way to name the
+set — the id had to go somewhere, `--accounts` was the natural guess, and it was
+dropped silently: the call returned 202 and the report failed minutes later with
+"Combined report generation failed". The CLI now refuses that up front and names
+the flag.
+
+Requires the matching API change (`competitor_report_id` on the report-generate
+request). Against an older API the field is ignored and competitor reports still
+fail, so upgrade the CLI only once that has shipped.
+
+## 1.3.0 — Analytics: reports, schedules, share links, competitors, ads
+
+### Reports, schedules and share links
+
+Three new command groups, all under the analytics umbrella:
+
+- **`reports:*` (6)** — `options`, `generate`, `get`, `list`, `retry`, `delete`.
+  Generation is asynchronous: `reports:generate` returns an id immediately and
+  `reports:get <id> --wait` polls until the download URL is ready.
+- **`report-schedules:*` (7)** — `create`, `list`, `get`, `pause`, `resume`,
+  `run`, `delete`. Recurring email delivery; `pause` is reversible and `run`
+  sends one immediately without disturbing the schedule.
+- **`share-links:*` (6)** — `create`, `list`, `get`, `enable`, `disable`,
+  `delete`. Client-facing links that need no ContentStudio account, optionally
+  password-protected and pinned to a fixed date range. `disable` revokes a link
+  without deleting it, so the URL can be restored rather than reissued.
+
+### Competitor benchmarking
+
+- **`competitors:search`** to find a page to track, **`competitor-reports:*`**
+  (`create`, `list`, `get`, `update`, `delete`) to manage a saved set, and
+  **`competitors:compare`** for the comparison numbers.
+  `competitor-reports:update` replaces the whole competitor set rather than
+  merging into it.
+
+### Ads analytics support
+
+34 more commands under the `analytics:` namespace, tracking the public API's ads
+surface (added after the analytics work below):
+
+- **Meta Ads (11)** and **Google Ads (17)** — summary, performance over time /
+  by level / by placement / by type, campaigns, ad sets, ad groups, ads,
+  keywords, search terms, shopping, the four Google conversion reports,
+  demographics, ad-account listing, and `ai-insights` on both. These take
+  `--account-id` (an ad account) rather than `--platform-id`.
+- **Campaigns & Labels (5)** — summary, breakdown, insights-breakdown, posts and
+  top-posts. The only POST analytics commands: their filters are lists, so
+  `--campaigns`, `--labels` and the per-network `--*-accounts` flags repeat.
+- **YouTube publishing-behaviour** — the one social endpoint added since.
+
+`analytics:*-accounts` is how you find an ad account id; every other ads command
+needs one. Still read-only, still one command per endpoint.
+
+### Analytics support
 
 99 new commands under the `analytics:` namespace, one per ContentStudio
 public API v1 analytics endpoint, across Facebook, Instagram, YouTube,
@@ -34,6 +214,85 @@ Pinterest, LinkedIn, Google Business Profile, TikTok, and Twitter/X.
 - All read-only GETs — no `--dry-run` (mutating commands only).
 - SKILL.md documents the full command reference and the
   `ANALYTICS_UPSTREAM_ERROR` response shape.
+
+### Instagram trial reels, per-platform overrides, `id` field rename, `platform_overrides` rename
+
+- `posts:create` / `posts:update`: added `--instagram-trial-reel` (boolean) and
+  `--instagram-trial-reel-graduation SS_PERFORMANCE|MANUAL` →
+  `instagram_options.trial_reel.{enabled,graduation_strategy}`. Publishes an
+  Instagram trial reel (shown to non-followers first). Requires
+  `--post-type reel` exactly plus a video; rejected (422) together with
+  `--instagram-collaborator` — the CLI now guards this locally as well.
+- `posts:create` / `posts:update`: added `--platform-overrides '<json>'` →
+  top-level `platform_overrides`, a per-platform content-override object
+  (`text`/`post_type` merge independently with the common content; `media`
+  is all-or-nothing per platform). Field was renamed from `overrides` to
+  `platform_overrides` to match a pre-release backend contract fix — no
+  compatibility shim needed since neither side has shipped yet.
+- **Breaking (mirrors a backend Public API v1 change):** all Public API v1
+  responses now return the primary identifier as `id` instead of `_id`
+  (accounts, media, workspaces, team members, campaigns, approval workflows,
+  labels, comments, content categories, posts and their nested
+  `labels[]`/`folder`/`accounts[]`). `member_id` on team members is unaffected
+  — it remains a distinct field. CLI output formatting and docs now read
+  `id` first, falling back to `_id` for compatibility with any cached/older
+  responses.
+
+## 1.2.0 — Best time to post
+
+### `scheduling:best-times`
+
+The scheduling optimiser is now part of the ContentStudio public API, so the CLI
+and the agent skill cover it. One new command wrapping
+`POST /workspaces/{w}/scheduling/optimal-times`.
+
+`scheduling:best-times` analyses the historical performance of the workspace's
+connected accounts and returns ranked posting **slots** — a weekday and an hour,
+best-first — both pooled across accounts (`global`) and per account
+(`individual`).
+
+Flags:
+
+- `--account <platform>:<account_id>` (repeatable) — restrict the analysis.
+  Both halves come from a single `accounts:list` row (its `platform` and `_id`),
+  because the API needs the platform as the entity `type`. Omit the flag to
+  analyse every connected account.
+- `--entities '<json>'` — the full entity array, for a different slot count per
+  account: `[{"id":"<id>","type":"facebook","slots":3}]`. Mutually exclusive
+  with `--account`.
+- `--global-slots <n>` / `--per-account-slots <n>` — how many recommendations
+  come back (1–24; API defaults 5 and 3).
+
+Notes:
+
+- **Times are always in the workspace timezone**, echoed as `meta.timezone`;
+  the endpoint takes no timezone parameter. That is the same clock
+  `posts:create --scheduled-at` writes against, so a slot can be scheduled
+  as-is — converting it to UTC first would move the post.
+- The response is not the usual `{status, message, data}` envelope, so the API
+  wrapper normalises `{meta, global, individual}` into the CLI's standard
+  `{ok, data}` shape like every other command.
+- A workspace with too little history still returns HTTP 200: the accounts that
+  could not be analysed come back in `meta.missing_entities` and `global` may be
+  `null`. That is a successful read, not an error. Accounts in
+  `meta.ai_fallback_entities` are estimates rather than measurements, and the
+  human-mode output labels them as such.
+- Slot counts and the `<platform>:<account_id>` form are validated client-side,
+  so a bad call fails immediately with a `ConfigError` rather than a round-trip.
+- Read-only, so there is no `--dry-run` — matching `inbox:list`, the CLI's other
+  POST-with-a-body read.
+- Human mode renders the pooled and per-account recommendations as tables
+  (rank, day, date, time, score, platform breakdown), with the hour formatted as
+  a clock time (the API returns it as a bare string, e.g. `"14"`).
+
+### Corrected `--scheduled-at` timezone documentation
+
+`posts:create` / `posts:update` `-s / --scheduled-at` was documented as UTC. The
+API actually interprets the timestamp as **workspace-local wall-clock time**, so
+the help text, SKILL.md and the README now say so. No behaviour change — the CLI
+sends the same string it always did; only the documentation was wrong, and it
+would have caused posts scheduled from `scheduling:best-times` slots to land at
+the wrong hour.
 
 ## 1.1.1 — documentation wording
 
@@ -155,7 +414,7 @@ Notes:
 - Resolves a docs/metadata mismatch: the frontmatter already declared `requires.env: CONTENTSTUDIO_API_KEY`, but the body only documented `auth:login`, so OpenClaw operators were left blocked with no instruction on how to satisfy the gate.
 - No CLI source-code changes — the CLI already reads `CONTENTSTUDIO_API_KEY` from the environment (`src/config.ts`).
 
-## Unreleased — write commands for workspaces/labels/campaigns/team + posts:create fixes
+### write commands for workspaces/labels/campaigns/team + posts:create fixes
 
 - Fixed `posts:create`: now emits top-level `content_category_id` and no longer forces `--account` when `--content-category-id` is supplied (content-category posts derive accounts from the category — previously 422'd). Added `--content-category-id`.
 - `posts:create` now normalizes `--scheduled-at` to the backend's `YYYY-MM-DD HH:MM:SS` (UTC) format, and gained parity flags `--label` (repeatable, max 20), `--campaign-id`, `--approver` (repeatable) + `--approve-option` + `--approval-notes`, and `--facebook-background-id`. `--publish-type` now also accepts `now`.

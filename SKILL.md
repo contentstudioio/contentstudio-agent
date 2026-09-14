@@ -1,7 +1,7 @@
 ---
 name: contentstudio
-description: ContentStudio is a tool to schedule social-media posts, manage the social inbox, and pull performance analytics across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile. Use when the user wants to list/create/delete/approve posts, read and reply to DMs, comments and reviews, manage media, audit workspaces, accounts, campaigns, labels, categories, or team-members, or pull analytics reports (top posts, engagement, impressions, follower growth, AI insights, etc.) on their ContentStudio account.
-version: 1.1.1
+description: ContentStudio is a tool to schedule social-media posts, manage the social inbox, and pull performance analytics across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile. Use when the user wants to list/create/delete/approve posts, find the best time to post, generate or edit images with AI, read and reply to DMs, comments and reviews, manage media, audit workspaces, accounts, campaigns, labels, categories, or team-members, or pull analytics reports (top posts, engagement, impressions, follower growth, AI insights, etc.) on their ContentStudio account.
+version: 1.5.0
 homepage: https://api.contentstudio.io/guide
 metadata: {"openclaw":{"emoji":"📅","requires":{"bins":["contentstudio"],"env":["CONTENTSTUDIO_API_KEY"]}}}
 ---
@@ -221,7 +221,7 @@ All commands are invoked as `contentstudio <group>:<command>`.
 | `accounts:connect <platform> --reconnect --account-id <id>` | Refresh an expired/invalid account |
 | `accounts:add-bluesky --handle <h> --app-password <p>` | Connect a Bluesky account (no browser — uses app password) |
 | `accounts:add-facebook-group --name <n> [--image <url>]` | Manually add a Facebook Group connection |
-| `accounts:remove <account_id>` | Remove (disconnect) a social account. `account_id` is the account's `_id` from `accounts:list`. Requires the `save_social` permission (403 otherwise). |
+| `accounts:remove <account_id>` | Remove (disconnect) a social account. `account_id` is the account's `id` from `accounts:list`. Requires the `save_social` permission (403 otherwise). |
 
 `--platform` values for `accounts:list` filter: `facebook`, `linkedin`, `twitter`, `instagram`, `youtube`, `tiktok`, `pinterest`, `gmb`.
 
@@ -245,6 +245,8 @@ All commands are invoked as `contentstudio <group>:<command>`.
 | `posts:create -c "text" -i <twitter_account> -t draft --twitter '<json>'` | Create a Twitter/X threaded-tweet post (max 10 tweets) |
 | `posts:create -c "text" -i <account> -t draft --first-comment "..." --first-comment-account <id>` | Create a post with a first comment |
 | `posts:create -c "text" -i <linkedin_account> -t draft --post-type poll --linkedin-options '<json>'` | Create a LinkedIn poll post (text-only) |
+| `posts:create -c "text" -i <ig_account> -t draft --post-type reel --video-url <url> --instagram-trial-reel` | Create an Instagram trial reel (shown to non-followers first) |
+| `posts:create -c "common text" -i <fb_account> -i <tiktok_account> -t draft -m <img_url> --platform-overrides '<json>'` | Same post to multiple platforms with a per-platform content override |
 | `posts:create --body /path/to/body.json` | Create a post with full JSON body |
 | `posts:update <post_id> [same flags as posts:create]` | Update an existing post (same body). Rejected (422) once the post is published/processing |
 | `posts:delete <post_id> [--delete-from-social]` | Delete a post |
@@ -259,7 +261,7 @@ All commands are invoked as `contentstudio <group>:<command>`.
 - `-c / --content` (required) — post text.
 - `-i / --account <id>` (repeatable) — account ID(s) to post to. **Required UNLESS `--content-category-id` is given.**
 - `--content-category-id <id>` — sets top-level `content_category_id`. **Required by the backend when `--publish-type content_category`.** When set, accounts are derived from the category, so `--account` is not required (and may be omitted). Use this instead of `--account` for content-category posts.
-- `-s / --scheduled-at "YYYY-MM-DD HH:MM:SS"` — scheduling time (UTC). The CLI normalizes any parseable date to `YYYY-MM-DD HH:MM:SS` (the backend's required `date_format`).
+- `-s / --scheduled-at "YYYY-MM-DD HH:MM:SS"` — scheduling time. The CLI normalizes any parseable date to `YYYY-MM-DD HH:MM:SS` (the backend's required `date_format`) and sends it as a plain wall-clock string. **The API reads it in the workspace's timezone, not UTC** — so pass the local time the user wants the post to fire at, and get the zone from `workspaces:current` if you're unsure. `scheduling:best-times` already returns slots in that zone, so they can be passed straight through.
 - `-m / --image-url <url>` (repeatable), `--video-url <url>`, `--media-id <id>` (repeatable) — media.
 - `--post-type <type>` — e.g. `feed`, `reel`, `carousel`, `story`, `poll`. A **carousel** is auto-derived by the backend when `post_type=carousel` and 2+ images are attached. A **poll** requires `--post-type poll` **and** a text-only `--linkedin-options` poll block (no media).
 - `--label <id>` (repeatable, max 20) → `labels`.
@@ -268,10 +270,21 @@ All commands are invoked as `contentstudio <group>:<command>`.
   - Shape: `{ "title"?: <string>, "poll"?: { "question": <≤140>, "options": <string[2..4], each ≤30>, "duration": "ONE_DAY" | "THREE_DAYS" | "SEVEN_DAYS" | "FOURTEEN_DAYS" } }`
   - A **poll** must be paired with `--post-type poll` and text-only content (no images/video). Backend validates and 422s on violations.
 - `--facebook-collaborator <user_id>` (repeatable, **max 10**) → `facebook_options.collaborators` (Facebook accounts). Merges with `--facebook-carousel` / `--facebook-background-id`.
-- `--instagram-collaborator <user_id>` (repeatable, **max 3**) → `instagram_options.collaborators` (Instagram accounts).
+- `--instagram-collaborator <user_id>` (repeatable, **max 3**) → `instagram_options.collaborators` (Instagram accounts). Rejected (422) together with `--instagram-trial-reel`.
+- `--instagram-trial-reel` (boolean, default `false`) → `instagram_options.trial_reel.enabled`. Publishes an Instagram **trial reel** — shown to non-followers first, so it does not appear on the profile grid or in follower feeds.
+  - `--instagram-trial-reel-graduation SS_PERFORMANCE|MANUAL` (default `SS_PERFORMANCE`) → `instagram_options.trial_reel.graduation_strategy`. `SS_PERFORMANCE` lets Instagram auto-graduate it to followers if it performs well; `MANUAL` requires graduating it by hand in the Instagram app (Instagram has no API for that).
+  - Requires `--post-type reel` **exactly** (not `feed+reel`) and a video — feed/carousel/story are rejected. The CLI does not pre-validate this; the backend returns 422.
+  - **Rejected (422) together with `--instagram-collaborator`.** Share-to-story is silently dropped (not rejected) when combined with a trial reel.
+  - Not available when the workspace posts to Instagram via the mobile app (`instagram_posting_option=mobile`).
+- `--platform-overrides '<json>'` → `platform_overrides` (top-level, works across any platform in the post). Pass a JSON **object** keyed by platform (`facebook`, `instagram`, `twitter`, `linkedin`, `pinterest`, `youtube`, `tiktok`, `gmb`, `tumblr`, `threads`, `bluesky`, `telegram`); the CLI parses it locally (invalid JSON → `ConfigError`) and sends it verbatim.
+  - Shape per platform: `{ "content": { "text"?: <string>, "post_type"?: <string>, "media"?: { "images"?: <url[] ≤10>, "video"?: <url> } } }`.
+  - `text` and `post_type` each merge **independently** with the common top-level `content` — an override with only `media` still inherits the common `text`/`post_type`.
+  - `media` is **atomic**: if an override's `content` includes a `media` key at all, that platform's media is defined ENTIRELY by the override (no per-field fallback to the common media for whichever of `images`/`video` it omits). Omitting `media` entirely inherits the common `content.media` wholesale. This exists because some platforms (e.g. TikTok) can never support mixed images+video.
+  - Omitting `--platform-overrides` entirely publishes the same top-level `content` to every targeted platform.
+  - Override images are URLs only (no `media_ids`) and follow the same validation as the top-level media (max 10 images, no mixing images+video in one override).
 - **Approval — two mutually-exclusive systems (pass only one):**
   - **Legacy** `--approver <user_id>` (repeatable) + `--approve-option anyone|everyone` (default `anyone`) + `--approval-notes "..."` → builds `approval: {approvers, approve_option, notes}` only when at least one approver is given. The post creator cannot be an approver. `anyone` = any single approver; `everyone` = all must approve.
-  - **Workflow** `--approval-workflow-id <id>` + `--approval-workflow-notes "..."` → `approval_workflow: {workflow_id, notes?}` — ATTACH a workflow (works on both create and update). Get the id from `approval-workflows:list` (its `_id`).
+  - **Workflow** `--approval-workflow-id <id>` + `--approval-workflow-notes "..."` → `approval_workflow: {workflow_id, notes?}` — ATTACH a workflow (works on both create and update). Get the id from `approval-workflows:list` (its `id`).
   - **Workflow (update only)** `--approval-workflow-action restart|resume|renotify_current|keep|remove` + `--approval-workflow-notes "..."` → `approval_workflow: {workflow_action, notes?}` — mutate the already-attached workflow. Only valid on `posts:update`.
   - **Exactly one** of `--approval-workflow-id` / `--approval-workflow-action`, and `--approver` cannot be combined with either `--approval-workflow-*` flag. The CLI errors locally (`ConfigError`) if these rules are broken.
 - `--facebook-background-id <id>` → `facebook_options.facebook_background_id` (plain-text Facebook posts only; rejected if media is attached). Get a valid id from `facebook:text-backgrounds`.
@@ -288,9 +301,37 @@ All commands are invoked as `contentstudio <group>:<command>`.
 - `--first-comment "<message>"` → `first_comment` (≤2000 chars). The CLI builds `first_comment: { message, accounts? }`. The accounts are supplied with `--first-comment-account <id>` (repeatable).
   - `--first-comment-account <id>` (repeatable) → `first_comment.accounts`. **The backend REQUIRES at least one account when a `--first-comment` message is given, and the accounts must be a subset of the post's main `--account` IDs.** The CLI does not hard-block client-side — if you omit `--first-comment-account`, the backend returns a 422.
 
-(`--facebook-carousel`, `--facebook-collaborator`, `--instagram-collaborator`, `--linkedin-options`, `--threads`, and `--twitter` only apply in shortcut mode. The `--body` JSON mode already supports `facebook_options` (carousel + collaborators), `instagram_options.collaborators`, `linkedin_options`, `threads_options`, `twitter_options`, `first_comment`, `approval`, and `approval_workflow` natively — use it for posts that mix multiple platform option blocks.)
+(`--facebook-carousel`, `--facebook-collaborator`, `--instagram-collaborator`, `--instagram-trial-reel`, `--instagram-trial-reel-graduation`, `--linkedin-options`, `--platform-overrides`, `--threads`, and `--twitter` only apply in shortcut mode. The `--body` JSON mode already supports `facebook_options` (carousel + collaborators), `instagram_options` (`collaborators` + `trial_reel`), `linkedin_options`, `threads_options`, `twitter_options`, `first_comment`, `approval`, `approval_workflow`, and top-level `platform_overrides` natively — use it for posts that mix multiple platform option blocks.)
 
 The `posts:list` payload now includes `linkedin_options` and `approval_workflow` per post (in addition to the existing fields) — they surface automatically in the `--json` output.
+
+### Scheduling — best time to post
+
+| Command | Purpose |
+|---------|---------|
+| `scheduling:best-times` | Ranked posting slots for the workspace, derived from the connected accounts' history |
+| `scheduling:best-times --account <platform>:<account_id>` | Restrict the analysis to specific accounts (repeatable) |
+| `scheduling:best-times --global-slots <n> --per-account-slots <n>` | How many recommendations to return (1–24 each) |
+| `scheduling:best-times --entities '<json>'` | Full entity array, for per-account slot counts |
+
+A **slot** is one recommended posting time: a weekday and an hour. Slots come back ranked best-first, so `--global-slots 3` means *the three best hours to post*.
+
+- **Times are always in the workspace timezone**, echoed as `meta.timezone`. There is no timezone parameter. That is the same clock `posts:create --scheduled-at` writes against, so a slot can be scheduled as-is — do **not** convert it to UTC first.
+- **Omit `--account` to analyse every connected account.** Otherwise pass `<platform>:<account_id>` where both halves come from one `accounts:list` row (its `platform` and `_id`), e.g. `--account facebook:<account_id>`. Supported platforms: `facebook`, `instagram`, `linkedin`, `twitter`, `tiktok`, `youtube`, `pinterest`, `threads`, `gmb`, `tumblr`, `bluesky`, `telegram`.
+- `--entities '[{"id":"<account_id>","type":"facebook","slots":3}]'` is the escape hatch for a **different slot count per account**; it cannot be combined with `--account`.
+- `--global-slots` (API default 5) sizes the pooled `global` view; `--per-account-slots` (API default 3) sizes each account's list. Both are 1–24 and are validated by the CLI before the call. Neither changes the underlying analysis or the `heatmap_matrix`, which always carries every hour that had signal.
+
+**Response shape** (`data` in the JSON envelope):
+
+- `meta` — `{generated_at, timezone, warnings[], missing_entities[], ai_fallback_entities[]}`.
+- `global` — pooled across analysed accounts: `top_recommendations[]` (each `{rank, day, date, time, score, platform_breakdown}`, where `time` is the hour as a bare string, e.g. `"14"` = 14:00), plus `heatmap_matrix.data` (sparse `[hour, day_index, score]` triples, `day_index` 0 = Monday) and `dates_key`. **`null` when no account had usable data.**
+- `individual` — the same breakdown keyed by account id, each with `platform` and `source` (`data_driven` or an AI fallback).
+
+**A thin workspace still returns HTTP 200.** Accounts with too little history come back in `meta.missing_entities` and `global` may be `null` — that is a successful read, not an error. Tell the user which accounts were skipped rather than reporting a failure. Accounts listed in `meta.ai_fallback_entities` are estimates, not measurements — say so when you present them.
+
+Errors: 422 for unknown accounts or a workspace with no connected accounts; 502 (`BackendError`) when the optimizer is temporarily unavailable — retry rather than reporting no data.
+
+**Reading is safe.** `scheduling:best-times` only reads, so it needs no `--dry-run` and no workspace confirmation. Scheduling a post from a slot is a mutation, so the usual `--dry-run` + workspace-confirmation rules apply to that step.
 
 ### Comments / Internal notes
 
@@ -307,6 +348,84 @@ The `posts:list` payload now includes `linkedin_options` and `approval_workflow`
 | `media:upload --file <local_path>` | Upload a local file |
 | `media:upload --url <external_url>` | Import from external URL |
 
+### AI images
+
+| Command | Purpose |
+|---------|---------|
+| `images:tools` | The image tools this API can invoke, with each tool's required inputs and control options |
+| `images:models` | Model identifiers `images:generate` accepts |
+| `images:brand` | `{configured, enabled}` — whether `--use-brand` will apply anything |
+| `images:generate -p "<prompt>"` | Prompt → image, saved to the media library |
+| `images:generate -p "<edit>" --image-url <url>` | Edit an existing image instead of generating from scratch |
+| `images:product-image --product-image-url <url>` | Restage a product photo |
+| `images:headshot --image-url <url>` | Professional headshot from a photo of a person |
+| `images:face-swap --target-image-url <url> --face-image-url <url>` | Put one image's face onto another's subject |
+| `images:outfit-swap --target-image-url <url> --outfit-image-url <url>` | Virtual try-on |
+| `images:upscale --image-url <url>` | Raise an image's resolution |
+| `images:remove-background --image-url <url>` | Cut the subject out of its background |
+| `images:tool <tool_key> --body '<json>'` | Any tool, with its full control set (this is how you reach `image-to-image`'s `style`, `aspect_ratio`, `image_resolution`, `image_quality`, multiple `attachments`, `reference_image_urls`) |
+
+**Every generation returns the same payload, and `data.media_id` is the handle you pass to `posts:create --media-id`.** That two-step is the normal way to publish an AI image — see the generate-then-publish recipe in the Examples section.
+
+```jsonc
+{ "ok": true, "data": {
+    "media_id": "66f1a2b3c4d5e6f708192a3b",   // → posts:create --media-id
+    "url": "https://storage.googleapis.com/.../generated.png",
+    "width": 1024, "height": 1024, "mime_type": "image/png",
+    "model_used": "nano-banana-pro",            // may differ from --model
+    "brand_applied": false,
+    "credits": { "consumed": 1, "available": 412 },
+    "persist_error": null } }
+```
+
+- **`media_id` is the durable handle; `url` is not.** Use `url` for a preview or as the input to the next tool. Do not store it — a `url` returned alongside a `persist_error` is a temporary provider link.
+- **Check `persist_error` (or `media_id !== null`) before calling a 200 done.** The image was generated *and charged* but could not be saved: `media_storage_full` means the workspace is out of media storage (retrying costs another credit and fails again), anything else is worth one retry. Tell the user to download the `url` now.
+- **Tools chain.** A media-library `url` from one call is valid input to the next (generate → upscale → remove-background). Each call is charged separately.
+- **Every image URL you pass in must be publicly fetchable over http(s)** by the image service — no auth, no expired signed URL, no private bucket, no local path. Upload a local file with `media:upload --file` first and pass the returned URL. A URL the service cannot download is `ValidationError` (`IMAGE_INPUT_REJECTED`), not a service outage.
+- **Generation is slow and billable.** The server's deadline is 120s; the CLI waits 150s (`--timeout <seconds>` to change it). These calls are **not retried** — the built-in 429/5xx retry is off for them, because re-running a generation can consume a second image credit. Retry deliberately, not in a loop.
+- **`--model` is optional.** Omit it for the service default. Costs differ (most models 1 image credit, `gpt-image-2` 5), so read `credits.consumed` rather than assuming.
+- **`model_used` is not one of the `images:models` values** — it comes back provider-prefixed (`fal-ai/nano-banana-pro`, `pixelcut/background-removal`) and names the model that actually ran after any fallback. Report it; never compare it for equality with `--model`.
+- **`images:tools` `controls` describe the underlying tool, not the public payload.** Take `--resolution` / `--aspect-ratio` values from there, but a control with no matching flag cannot be sent at all — `upscale` lists `model` and `upscale_factor`, and neither is in the API's tool payload. Likewise `accepts_instructions: true` on `headshot` and `face-swap` is not reachable: only `images:product-image` has `--instructions`. Sending an unsupported field is dropped in silence, so it will look like it worked.
+- **`--dimensions`** is `square`, `square_hd`, `portrait_4_5` or `landscape_16_9`, text→image only. Exact pixels are the model's choice — read `width`/`height` back. Anything else is rejected by the CLI before the call.
+- **Brand knowledge is a boolean, read-only.** `--use-brand` on `images:generate` only; it is resolved server-side and no brand ID or brand content is ever accepted or returned. `--use-brand` with no brand profile is `brand_applied: false`, not an error — `images:brand` tells you in advance. **The tool commands and `images:generate --image-url` always report `brand_applied: false`** — edits and tools do not apply brand knowledge.
+- **`--dry-run` on every generating command** prints the endpoint and body and calls nothing. Use it to show the user the prompt before spending a credit. The three discovery commands are reads and need no `--dry-run`.
+- **Rate limit: 30 requests/minute**, shared with the ContentStudio app's own AI usage on the same account. A `RateLimitError` here needs the full minute.
+- Video tools (`image-to-video`, `motion-control`, `lip-sync`, `talking-avatar`) are **not** on this API; asking for one is `NotFoundError` (`TOOL_NOT_FOUND`), same as an unknown key.
+- `images:tools` answering with an empty list means the catalogue is temporarily unreachable, not that the workspace has no tools. Retry rather than telling the user there are none.
+- Sample workspaces are read-only: the three discovery commands work, both generating paths return 403.
+
+### AI Video
+
+| Command | Purpose |
+|---------|---------|
+| `ai-video:tools` | List enabled AI video tools (`key`, `label`, `description?`, `inputs[]`, `controls[]`) |
+| `ai-video:models` | List every model `ai-video:generate` / `ai-video:estimate` can select (`key`, `provider`, `modes[]`, `supported_resolutions?`, `supported_durations?`, `supported_ratios?`, `supports_audio?`, defaults) |
+| `ai-video:estimate [--duration] [--model] [--resolution] [--mode text-to-video\|image-to-video\|reference-to-video] [--audio] [--aspect-ratio] [--enhance-prompt]` | Real credit/time estimate. Nothing submitted or charged |
+| `ai-video:generate --prompt "..." [--image-url \| --reference-image-url <url> (repeatable)] [--model] [--duration] [--resolution] [--aspect-ratio] [--audio] [--enhance-prompt] [--style] [--use-brand]` | Submit an async video generation job |
+| `ai-video:run-tool motion-control --image-url <url> --video-url <url>` | Apply motion from a driving video to a source image |
+| `ai-video:run-tool lip-sync --video-url <url> --audio-url <url>` | Sync a video's mouth movement to an audio track |
+| `ai-video:run-tool talking-avatar --image-url <url> --audio-url <url>` | Animate a still image into a talking avatar from audio |
+| `ai-video:jobs [--status queued\|processing\|completed\|failed\|cancelled] [--page] [--per-page]` | Paginated list of video jobs submitted through this API (never chat/internal-tool jobs) |
+| `ai-video:job <job_id>` | Single job status — local snapshot if terminal, live-polled otherwise |
+| `ai-video:cancel-job <job_id>` | Cancel a still-active job. May charge for partial work already consumed |
+
+**`ai-video:generate` notes:**
+- `--prompt` is required, max 1000 characters.
+- Omitting both `--image-url` and `--reference-image-url` is **text-to-video**. `--image-url` switches to **image-to-video**. `--reference-image-url` (repeatable, max 8) switches to **reference-to-video**. `--image-url` and `--reference-image-url` are **mutually exclusive** — the CLI raises a `ConfigError` locally if both are set.
+- `--use-brand` (default false) resolves brand assets **server-side** — there is no `--brand-id` flag; the backend does not accept one.
+- Response `data`: `{ job_id, status_url (relative path to ai-video:job), status, estimated_credits, estimated_seconds? }`. Poll `ai-video:job <job_id>` (or fetch `status_url` directly) until `status` is terminal.
+
+**`ai-video:run-tool <tool_key>` notes:**
+- `tool_key` is one of the keys from `ai-video:tools` — currently `motion-control`, `lip-sync`, `talking-avatar`. The CLI validates the required input pair locally before sending (`motion-control` → image+video, `lip-sync` → video+audio, `talking-avatar` → image+audio) and raises `ConfigError` if a required flag is missing.
+- No upfront estimate — the response's `estimated_credits` / `estimated_seconds` are always `null`. Run `ai-video:tools` to see each tool's declared `inputs[]` / `controls[]` if the flags above don't cover a newer tool.
+
+**`ai-video:jobs` / `ai-video:job` / `ai-video:cancel-job` notes:**
+- `ai-video:jobs` only ever returns jobs **submitted through this API** — chat/internal-tool-generated jobs never appear.
+- Job `status` is one of `queued`, `processing`, `completed`, `failed`, `cancelled`. `stage` / `message` / `result` / `credits` / `brand_applied` are present depending on status.
+- `ai-video:cancel-job` 409s (`ConflictError`) with `JOB_ALREADY_TERMINAL` if the job already finished, failed, or was cancelled — check `ai-video:job <job_id>` first if unsure.
+
+**Errors specific to AI Video** (in addition to the standard table below): 403 `INSUFFICIENT_VIDEO_CREDITS` (not enough credits — surfaces as `AuthError`), 403 `STORAGE_LIMIT_EXCEEDED` (surfaces as `AuthError`), 404 `TOOL_NOT_FOUND` / `JOB_NOT_FOUND` (`NotFoundError`), 409 `JOB_ALREADY_TERMINAL` (`ConflictError`), 502 `AI_SERVICE_UNAVAILABLE` / 504 `AI_SERVICE_TIMEOUT` (`BackendError` — safe to retry after a short backoff).
+
 ### Lookup tables (read)
 
 | Command | Purpose |
@@ -315,9 +434,9 @@ The `posts:list` payload now includes `linkedin_options` and `approval_workflow`
 | `categories:list` | List content categories |
 | `labels:list` | List labels |
 | `team:list` | List workspace team members |
-| `approval-workflows:list` | List approval workflows (use an item's `_id` as `--approval-workflow-id`) |
+| `approval-workflows:list` | List approval workflows (use an item's `id` as `--approval-workflow-id`) |
 
-Each `approval-workflows:list` item is `{ _id, name, is_default, levels: [{ level_number, title, rule, members: [{ user_id }] }] }`. Use `_id` as `posts:create` / `posts:update`'s `--approval-workflow-id`.
+Each `approval-workflows:list` item is `{ id, name, is_default, levels: [{ level_number, title, rule, members: [{ user_id }] }] }`. Use `id` as `posts:create` / `posts:update`'s `--approval-workflow-id`.
 
 ### Labels (write)
 
@@ -345,7 +464,7 @@ For labels and campaigns: `--name` ≤100 chars; `--color` is one of the enum va
 | `team:update <member_id> --role <r> --permissions '<json>' [--membership]` | Update a member's role/permissions |
 | `team:remove <member_id> [--confirmed]` | Remove a member |
 
-- `member_id` is the **membership id** — the `_id` / `member_id` field from `team:list` (not the user_id).
+- `member_id` is the **membership id** — the `member_id` field from `team:list` (not the user's `id`, a distinct field).
 - `--role` (required): `admin`, `approver`, or `collaborator`.
 - `--email` (required for `team:add`): a single email address.
 - `--membership` (optional): `team` (internal) or `client` (external; hidden from internal notes). Default `team`.
@@ -365,7 +484,7 @@ For labels and campaigns: `--name` ≤100 chars; `--color` is one of the enum va
 |---------|---------|
 | `accounts:remove <account_id> [--dry-run]` | Remove (disconnect) a social account (`DELETE /workspaces/{w}/accounts/{account_id}`) |
 
-- `account_id` is the account's `_id` from `accounts:list`.
+- `account_id` is the account's `id` from `accounts:list`.
 - Requires the `save_social` permission — callers without it get 403.
 - Errors: 401 (bad/missing API key), 403 (missing `save_social`), 404 (account not found in the workspace), 422 (removal failed). Success is 200 with an empty `data` array.
 - Mutating command — preview with `--dry-run` and confirm the workspace first.
@@ -530,11 +649,13 @@ read: report it as "no matching conversations", not "not found".
 ### Analytics
 
 Read-only performance reports across Facebook, Instagram, YouTube, Pinterest,
-LinkedIn, Google Business Profile, TikTok, and Twitter/X (99 commands total,
-one per backend endpoint — no generic passthrough).
+LinkedIn, Google Business Profile, TikTok, Twitter/X, **Meta Ads** and
+**Google Ads**, plus cross-network Campaigns & Labels reports (133 commands
+total, one per backend endpoint — no generic passthrough).
 
-Almost every command needs `--platform-id` (the connected account, from
-`accounts:list`) plus either a date range or a native post id:
+Most commands need `--platform-id` (the connected account, from
+`accounts:list`) plus either a date range or a native post id. The ads and
+campaign/label families are the exceptions — see below:
 
 - **Date-range reports** — `--start-date` / `--end-date` (`YYYY-MM-DD`,
   both required). Optional on most: `--timezone` (IANA name, default UTC),
@@ -546,14 +667,28 @@ Almost every command needs `--platform-id` (the connected account, from
   `*-single-video`) — `--platform-id` + `--post-id` (the platform-native id,
   not a ContentStudio internal id). No date range.
 - **AI insights** commands (`*-ai-insights`) additionally take `--type`
-  (insight key) and `--language` (ISO 639-1, default `en`).
+  (`aiInsightsSummary` for the compact card, `aiInsightsDetailed` for the full
+  report) and `--language` (ISO 639-1, default `en`). Both ads platforms have
+  one too.
+- **Ads reports** (`analytics:meta-ads-*`, `analytics:google-ads-*`) take
+  `--account-id` — an *ad* account (`act_…` on Meta, a customer id on Google,
+  from `analytics:meta-ads-accounts` / `analytics:google-ads-accounts`) — not
+  `--platform-id`. Table commands add `--limit`/`--offset`, `--search`,
+  `--order-by`/`--order-dir` and id filters (`--campaign-id`, `--ad-set-id`,
+  `--ad-group-id`); chart commands add `--metric` and `--level`.
+  `analytics:*-ads-accounts` needs no account at all — it is how you find one.
+- **Campaigns & Labels** (`analytics:campaigns-labels-*`) are the only POST
+  reports: the filters are lists, so repeat the flag —
+  `--campaigns <id> --campaigns <id>`, `--labels <id>`, and one account list
+  per network (`--facebook-accounts`, `--instagram-accounts`, …). Only
+  `--start-date`/`--end-date` are required.
 
 Run `contentstudio analytics:<command> --help` to see the exact options for
 any one command — required vs. optional and enum choices differ per endpoint.
 
-All analytics commands are GET requests with no side effects, so none of them
-take `--dry-run` (that flag only exists on mutating commands elsewhere in
-this CLI).
+Every analytics command is read-only — the campaign/label ones are POSTs only
+because their filters are arrays — so none of them take `--dry-run` (that flag
+only exists on mutating commands elsewhere in this CLI).
 
 **If a command returns `ANALYTICS_UPSTREAM_ERROR`** (HTTP 200 with
 `status: false`, often `upstream_status: 401`), that is the ContentStudio
@@ -602,7 +737,7 @@ is wrong.
 | `analytics:instagram-summary` | Instagram summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
 | `analytics:instagram-top-posts` | Instagram top-performing posts | --platform-id, --start-date, --end-date |
 
-**YouTube (19)**
+**YouTube (20)**
 
 | Command | Purpose | Required |
 |---------|---------|----------|
@@ -613,6 +748,7 @@ is wrong.
 | `analytics:youtube-find-video` | YouTube traffic source breakdown (how viewers found videos) | --platform-id, --start-date, --end-date |
 | `analytics:youtube-least-posts` | YouTube least-performing videos ordered by views and engagement | --platform-id, --start-date, --end-date |
 | `analytics:youtube-performance-schedule` | YouTube video performance metrics grouped by publish date | --platform-id, --start-date, --end-date |
+| `analytics:youtube-publishing-behaviour` | YouTube posts published over time and content-type breakdown | --platform-id, --start-date, --end-date |
 | `analytics:youtube-single-video` | Get a single YouTube video by ID | --platform-id, --post-id |
 | `analytics:youtube-sorted-top-posts` | YouTube videos sorted by a configurable metric | --platform-id, --start-date, --end-date |
 | `analytics:youtube-subscriber-trend` | YouTube cumulative subscriber trend over time | --platform-id, --start-date, --end-date |
@@ -701,37 +837,107 @@ is wrong.
 | `analytics:twitter-summary` | Twitter summary KPIs — current vs previous period | --platform-id, --start-date, --end-date |
 | `analytics:twitter-top-tweets` | Twitter top-performing tweets | --platform-id, --start-date, --end-date |
 
-### AI Video
+**Meta Ads (11)**
 
-| Command | Purpose |
-|---------|---------|
-| `ai-video:tools` | List enabled AI video tools (`key`, `label`, `description?`, `inputs[]`, `controls[]`) |
-| `ai-video:models` | List every model `ai-video:generate` / `ai-video:estimate` can select (`key`, `provider`, `modes[]`, `supported_resolutions?`, `supported_durations?`, `supported_ratios?`, `supports_audio?`, defaults) |
-| `ai-video:estimate [--duration] [--model] [--resolution] [--mode text-to-video\|image-to-video\|reference-to-video] [--audio] [--aspect-ratio] [--enhance-prompt]` | Real credit/time estimate. Nothing submitted or charged |
-| `ai-video:generate --prompt "..." [--image-url \| --reference-image-url <url> (repeatable)] [--model] [--duration] [--resolution] [--aspect-ratio] [--audio] [--enhance-prompt] [--style] [--use-brand]` | Submit an async video generation job |
-| `ai-video:run-tool motion-control --image-url <url> --video-url <url>` | Apply motion from a driving video to a source image |
-| `ai-video:run-tool lip-sync --video-url <url> --audio-url <url>` | Sync a video's mouth movement to an audio track |
-| `ai-video:run-tool talking-avatar --image-url <url> --audio-url <url>` | Animate a still image into a talking avatar from audio |
-| `ai-video:jobs [--status queued\|processing\|completed\|failed\|cancelled] [--page] [--per-page]` | Paginated list of video jobs submitted through this API (never chat/internal-tool jobs) |
-| `ai-video:job <job_id>` | Single job status — local snapshot if terminal, live-polled otherwise |
-| `ai-video:cancel-job <job_id>` | Cancel a still-active job. May charge for partial work already consumed |
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:meta-ads-accounts` | List connected Meta ad accounts | — |
+| `analytics:meta-ads-ad-sets` | Ad sets with per-ad-set metrics | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-ads` | Ads with per-ad metrics and creative details | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-ai-insights` | AI-generated insights for an ad account | --account-id, --start-date, --end-date, --type |
+| `analytics:meta-ads-campaigns` | Campaigns with per-campaign metrics | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-demographics` | Audience breakdown by age and gender, region or country | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-performance-by-level` | One metric broken down by campaign, ad set or ad | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-performance-by-placement` | One metric broken down by publisher platform and placement | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-performance-over-time` | Daily time series for one or more metrics | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-results-by-objective` | Results and spend grouped by campaign objective | --account-id, --start-date, --end-date |
+| `analytics:meta-ads-summary` | Meta Ads headline KPIs — current vs previous period | --account-id, --start-date, --end-date |
 
-**`ai-video:generate` notes:**
-- `--prompt` is required, max 1000 characters.
-- Omitting both `--image-url` and `--reference-image-url` is **text-to-video**. `--image-url` switches to **image-to-video**. `--reference-image-url` (repeatable, max 8) switches to **reference-to-video**. `--image-url` and `--reference-image-url` are **mutually exclusive** — the CLI raises a `ConfigError` locally if both are set.
-- `--use-brand` (default false) resolves brand assets **server-side** — there is no `--brand-id` flag; the backend does not accept one.
-- Response `data`: `{ job_id, status_url (relative path to ai-video:job), status, estimated_credits, estimated_seconds? }`. Poll `ai-video:job <job_id>` (or fetch `status_url` directly) until `status` is terminal.
+**Google Ads (17)**
 
-**`ai-video:run-tool <tool_key>` notes:**
-- `tool_key` is one of the keys from `ai-video:tools` — currently `motion-control`, `lip-sync`, `talking-avatar`. The CLI validates the required input pair locally before sending (`motion-control` → image+video, `lip-sync` → video+audio, `talking-avatar` → image+audio) and raises `ConfigError` if a required flag is missing.
-- No upfront estimate — the response's `estimated_credits` / `estimated_seconds` are always `null`. Run `ai-video:tools` to see each tool's declared `inputs[]` / `controls[]` if the flags above don't cover a newer tool.
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:google-ads-accounts` | List connected Google Ads accounts | — |
+| `analytics:google-ads-ad-groups` | Ad groups with per-ad-group metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-ads` | Ads with per-ad metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-ai-insights` | AI-generated insights for an ad account | --account-id, --start-date, --end-date, --type |
+| `analytics:google-ads-campaigns` | Campaigns with per-campaign metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-conversion-actions` | Conversion actions configured on the account | --account-id, --start-date, --end-date |
+| `analytics:google-ads-conversion-funnel` | Conversion funnel — impressions through to conversions | --account-id, --start-date, --end-date |
+| `analytics:google-ads-conversions-by-action` | Conversions grouped by conversion action | --account-id, --start-date, --end-date |
+| `analytics:google-ads-conversions-over-time` | Conversions over time | --account-id, --start-date, --end-date |
+| `analytics:google-ads-demographics` | Audience breakdown by age, gender and location | --account-id, --start-date, --end-date |
+| `analytics:google-ads-keywords` | Keywords with per-keyword metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-performance-by-level` | One metric broken down by campaign, ad group or ad | --account-id, --start-date, --end-date |
+| `analytics:google-ads-performance-by-type` | One metric broken down by campaign type | --account-id, --start-date, --end-date |
+| `analytics:google-ads-performance-over-time` | Daily time series for one or more metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-search-terms` | Search terms with per-term metrics | --account-id, --start-date, --end-date |
+| `analytics:google-ads-shopping` | Shopping campaign product performance | --account-id, --start-date, --end-date |
+| `analytics:google-ads-summary` | Google Ads headline KPIs — current vs previous period | --account-id, --start-date, --end-date |
 
-**`ai-video:jobs` / `ai-video:job` / `ai-video:cancel-job` notes:**
-- `ai-video:jobs` only ever returns jobs **submitted through this API** — chat/internal-tool-generated jobs never appear.
-- Job `status` is one of `queued`, `processing`, `completed`, `failed`, `cancelled`. `stage` / `message` / `result` / `credits` / `brand_applied` are present depending on status.
-- `ai-video:cancel-job` 409s (`ConflictError`) with `JOB_ALREADY_TERMINAL` if the job already finished, failed, or was cancelled — check `ai-video:job <job_id>` first if unsure.
+**Campaigns & Labels (5)**
 
-**Errors specific to AI Video** (in addition to the standard table below): 403 `INSUFFICIENT_VIDEO_CREDITS` (not enough credits — surfaces as `AuthError`), 403 `STORAGE_LIMIT_EXCEEDED` (surfaces as `AuthError`), 404 `TOOL_NOT_FOUND` / `JOB_NOT_FOUND` (`NotFoundError`), 409 `JOB_ALREADY_TERMINAL` (`ConflictError`), 502 `AI_SERVICE_UNAVAILABLE` / 504 `AI_SERVICE_TIMEOUT` (`BackendError` — safe to retry after a short backoff).
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `analytics:campaigns-labels-breakdown` | Per-campaign and per-label totals, current vs previous period | --start-date, --end-date |
+| `analytics:campaigns-labels-insights-breakdown` | Daily time series per campaign and per label | --start-date, --end-date |
+| `analytics:campaigns-labels-posts` | Per-post table for the selected campaigns & labels | --start-date, --end-date |
+| `analytics:campaigns-labels-summary` | Campaign & label summary KPIs — current vs previous period | --start-date, --end-date |
+| `analytics:campaigns-labels-top-posts` | Top 5 posts per network for the selected campaigns & labels | --start-date, --end-date |
+
+### Analytics: reports, schedules, share links
+
+Reporting is asynchronous. `reports:generate` returns an id straight away and
+the work happens elsewhere, so never treat the create response as a finished
+report — poll `reports:get <id> --wait`, or pass `--callback-url` to be told
+instead of asking. A report is done when `status` is `completed` and
+`export_url` is populated; `failed` is terminal too, and `reports:retry` re-runs
+it from the stored definition without rebuilding the request.
+
+Start from `reports:options` rather than guessing: it returns the report types
+this workspace can build and the sections each one accepts, and it is the same
+catalogue the product's own section selector reads.
+
+**The two competitor types take a competitor set, not accounts.**
+`facebook_competitor` and `instagram_competitor` are built from a saved set, so
+they need `--competitor-report-id` (from `competitor-reports:list`) and ignore
+`--accounts`. Putting the set id in `--accounts` is the natural mistake and is
+refused before the call goes out — it used to be accepted, dropped, and surface
+minutes later as "Combined report generation failed".
+
+**Share links are how a client sees a report without an account.** Create one
+with `share-links:create`; `--password` protects it, `--date-range` pins the
+period so the numbers stop moving, and omitting the range leaves it rolling.
+There is no expiry — a link lives until you disable or delete it, so prefer
+`share-links:disable` (reversible) over `share-links:delete` when a client
+engagement pauses. A share link is independent of any generated report: it shows
+the live dashboard, not a PDF.
+
+`report-schedules:run` asks for an immediate send, but the API acknowledges the
+request without returning a report id. Confirm with `report-schedules:get` and
+check `last_run_at` moved before telling the user the report went out.
+
+### Analytics: competitors
+
+Two different things share the word "report". A **competitor report** is a saved
+*set* of competitors to benchmark against — it has no status and produces no
+file. The comparison numbers are read separately, with `competitors:compare`.
+
+Provisioning order matters: `competitors:search` first, because a competitor is
+an object (`competitor_id` plus `name`), not a bare id. `competitor-reports:create`
+accepts the shorthand `--competitors 'id:Name,id:Name'` or a JSON array, and
+expands it for you.
+
+A page that cannot be tracked comes back as an empty result with a `reason` —
+that is a successful read, not an error. Tell the user which page could not be
+tracked and why, rather than reporting a failure.
+
+`competitor-reports:update` **replaces** the set, so send every competitor you
+want to keep, not just the new one.
+
+When reading comparisons, respect each row's `state`. Only `Processed` means a
+complete measurement for the period — a competitor in any other state has zeros
+that mean *not measured*, not *zero engagement*. Never present those as a result.
 
 ---
 
@@ -741,7 +947,7 @@ is wrong.
 
 ```bash
 contentstudio --json auth:whoami
-# → {"ok": true, "data": {"_id": "...", "email": "...", "full_name": "..."}}
+# → {"ok": true, "data": {"id": "...", "email": "...", "full_name": "..."}}
 ```
 
 ### Find a Facebook account to post to
@@ -916,7 +1122,7 @@ The top-level `-c / --content` is the lead tweet; each `--twitter` item is a fol
 
 **14. Full-control body via `--body <file.json>`** (any field the shortcut flags don't cover)
 
-Use `--body` when you need fields beyond the shortcut flags (per-platform `overrides`, `twitter_options`/`threads_options`, `timezone`, `hide_client`, etc.). The JSON is sent verbatim, so build it for the platform(s) your `accounts` belong to — a Facebook-carousel body, a Threads body, and a Twitter body are separate posts, not one combined payload.
+Use `--body` when you need fields beyond the shortcut flags (per-platform `platform_overrides`, `twitter_options`/`threads_options`, `timezone`, `hide_client`, etc.). The JSON is sent verbatim, so build it for the platform(s) your `accounts` belong to — a Facebook-carousel body, a Threads body, and a Twitter body are separate posts, not one combined payload.
 
 ```jsonc
 // /tmp/post.json — a Facebook carousel via the full body schema
@@ -947,6 +1153,100 @@ contentstudio --json posts:create --body /tmp/post.json
 ```
 
 For a Threads or Twitter/X thread, use a body with that account and the matching block instead — e.g. `{ "content": {...}, "accounts": ["<threads_account_id>"], "scheduling": {...}, "threads_options": { "has_multi_threads": true, "multi_threads": [...] } }` (or `twitter_options.threaded_tweets` for Twitter/X).
+
+### Schedule a post at the best time
+
+```bash
+# 1. Ask for the best slots. Omit --account for every connected account.
+contentstudio --json scheduling:best-times --global-slots 3
+# → data.meta.timezone            e.g. "Asia/Karachi"
+#   data.global.top_recommendations[0]  {rank: 1, day: "Wednesday",
+#                                        date: "2026-08-19", time: "14", score: 100}
+#   data.meta.missing_entities     accounts with too little history (skipped)
+
+# 2. Narrow it to the account you're actually posting to.
+#    <platform>:<account_id> — both from one accounts:list row.
+contentstudio --json scheduling:best-times \
+  --account facebook:<account_id> --per-account-slots 3
+
+# 3. Show the user the ranked slots and let them pick. Then schedule at that
+#    slot's date + hour AS-IS — the times are already workspace-local, so
+#    converting to UTC would move the post.
+contentstudio --json posts:create \
+  -c "Launch day is here." \
+  -i <account_id> \
+  -t scheduled \
+  -s "2026-08-19 14:00:00" \
+  --dry-run
+
+# 4. Drop --dry-run once the user approves the time and the text.
+```
+
+If `data.global` is `null`, the workspace has too little history — don't report an
+error. Say which accounts were skipped (`meta.missing_entities`) and offer to
+schedule at a time the user chooses instead.
+
+### Generate an image and publish it (two steps)
+
+```bash
+# 0. Optional: see what is available. Both are configuration, so cache them.
+contentstudio --json images:models
+contentstudio --json images:tools
+
+# 1. Show the user the prompt first — generating costs an image credit.
+contentstudio --json images:generate \
+  -p "Flat-lay of autumn coffee beans on linen, warm daylight" \
+  --dimensions square_hd --dry-run
+
+# 2. Generate. Takes seconds; --json gives you data.media_id.
+MEDIA_ID=$(contentstudio --json images:generate \
+  -p "Flat-lay of autumn coffee beans on linen, warm daylight" \
+  --dimensions square_hd | jq -r '.data.media_id')
+
+# 3. Attach it. media_id goes in as --media-id, unchanged.
+contentstudio --json posts:create \
+  -c "Autumn blend is back." -i <account_id> -t draft \
+  --media-id "$MEDIA_ID" --dry-run
+
+# 4. Drop --dry-run once the user approves the image and the text. That creates a
+#    draft; to send it instead, swap `-t draft` for
+#    `-t scheduled -s "YYYY-MM-DD HH:MM:SS"`. There is no publish-now type —
+#    --publish-type takes scheduled|draft|queued|content_category.
+```
+
+If `media_id` comes back `null`, read `persist_error`: the image exists at `data.url`
+but is not in the media library, so `posts:create --media-id` has nothing to take.
+Either fix the cause (`media_storage_full` → free up storage) or use the URL now,
+before the provider link expires.
+
+Editing and chaining work the same way — the `url` of one result is the input to the next:
+
+```bash
+# Edit an existing image (the prompt describes the change, not the whole picture)
+contentstudio --json images:generate \
+  -p "Make the background a snowy street at dusk" \
+  --image-url https://example.com/base.png
+
+# Clean up a product shot, then restage it
+URL=$(contentstudio --json images:remove-background \
+        --image-url https://example.com/mug.png | jq -r '.data.url')
+contentstudio --json images:product-image --product-image-url "$URL" \
+  --instructions "on a marble kitchen counter, morning light"
+
+# A tool's own controls — the escape hatch reaches every field the API declares
+contentstudio --json images:tool image-to-image --body '{
+  "prompt": "same mug, editorial magazine styling",
+  "attachments": ["https://example.com/mug.png"],
+  "aspect_ratio": "4:5"
+}' --dry-run
+```
+
+Only ever pass URLs the image service can download. To use a local file, upload it first:
+
+```bash
+URL=$(contentstudio --json media:upload --file ./mug.png | jq -r '.data.url')
+contentstudio --json images:upscale --image-url "$URL"
+```
 
 ### List recent draft posts
 
@@ -1039,7 +1339,8 @@ contentstudio --json inbox:tag-attach <element_ref> \
 | `NotFoundError` | 404 | The resource doesn't exist or isn't in this workspace. |
 | `ValidationError` | 422 | Flattened Laravel-style field errors from the API. |
 | `ConflictError` | 409 | Resource already exists, or a send's delivery outcome is undetermined. Verify before retrying a send. |
-| `RateLimitError` | 429 | Wait a moment and retry. |
+| `RateLimitError` | 429 | Wait a moment and retry. On the AI image commands the bucket is 30/min and needs the full minute. |
+| `CreditLimitError` | 403 | Out of AI image credits (`images:*`). Top up or wait for the cycle; nothing was charged. Re-running `auth:login` cannot fix it. |
 | `BackendError` | 5xx or network | Retry after a short backoff. |
 | `ConfigError` | — (local) | Missing API key / workspace; run `auth:login` or pass flags. |
 

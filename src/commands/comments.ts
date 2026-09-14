@@ -29,7 +29,7 @@ export function registerComments<T>(yargs: Argv<T>): Argv<T> {
             out.table(
               ["ID", "Author", "Note?", "Comment"],
               items.map((c) => [
-                String(c._id ?? "-"),
+                String(c.id ?? c._id ?? "-"),
                 c?.author?.full_name ?? c?.user_name ?? "-",
                 c.is_note ? "yes" : "no",
                 String(c.comment ?? "").slice(0, 60),

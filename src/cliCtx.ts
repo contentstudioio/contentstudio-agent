@@ -4,7 +4,7 @@
  */
 
 import { Config, loadConfig } from "./config";
-import { Client } from "./api";
+import { Client, ClientOpts } from "./api";
 import { ConfigError } from "./errors";
 import * as out from "./output";
 import { CliContext, emitError, emitSuccess } from "./output";
@@ -25,12 +25,18 @@ export function ctxFromArgv(argv: any): GlobalArgs {
 /**
  * Load config (applying any `--base-url` override) and return a Client.
  * Throws ConfigError if API key isn't configured (caught by run()).
+ *
+ * `opts` is for command groups whose calls do not fit the defaults — the AI
+ * image commands raise the timeout and switch retries off (see images.ts).
  */
-export function buildClient(g: GlobalArgs): { cfg: Config; client: Client } {
+export function buildClient(
+  g: GlobalArgs,
+  opts: ClientOpts = {},
+): { cfg: Config; client: Client } {
   const cfg = loadConfig();
   if (g.baseUrl) cfg.baseUrl = g.baseUrl;
   cfg.requireApiKey();
-  return { cfg, client: new Client(cfg) };
+  return { cfg, client: new Client(cfg, opts) };
 }
 
 /**

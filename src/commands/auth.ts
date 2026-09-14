@@ -48,7 +48,7 @@ export function registerAuth<T>(yargs: Argv<T>): Argv<T> {
           const client = new Client(cfg);
           const me: any = await getMe(client);
           cfg.user = {
-            id: me?._id ?? me?.id ?? null,
+            id: me?.id ?? me?._id ?? null,
             email: me?.email ?? null,
             full_name: me?.full_name ?? null,
           };
@@ -89,7 +89,7 @@ export function registerAuth<T>(yargs: Argv<T>): Argv<T> {
         const me: any = await getMe(client);
         out.emitSuccess(me, g, (m) => {
           out.section("Authenticated user");
-          out.status("ID", m._id || m.id || "-");
+          out.status("ID", m.id || m._id || "-");
           out.status("Name", m.full_name || "-");
           out.status("Email", m.email || "-");
           out.status("State", m.state || "-");

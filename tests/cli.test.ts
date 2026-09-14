@@ -371,6 +371,213 @@ describe("--dry-run paths never hit the network", () => {
     expect(data.error.type).toBe("ConfigError");
   });
 
+  it("posts:create --dry-run with --instagram-trial-reel builds trial_reel block", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "Trial reel",
+        "-i",
+        "ig1",
+        "-t",
+        "draft",
+        "--video-url",
+        "https://e.com/reel.mp4",
+        "--post-type",
+        "reel",
+        "--instagram-trial-reel",
+        "--instagram-trial-reel-graduation",
+        "MANUAL",
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(true);
+    expect(data.data.body.instagram_options).toEqual({
+      trial_reel: { enabled: true, graduation_strategy: "MANUAL" },
+    });
+  });
+
+  it("posts:create --dry-run with --instagram-trial-reel defaults graduation_strategy to SS_PERFORMANCE", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "Trial reel",
+        "-i",
+        "ig1",
+        "-t",
+        "draft",
+        "--video-url",
+        "https://e.com/reel.mp4",
+        "--post-type",
+        "reel",
+        "--instagram-trial-reel",
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(true);
+    expect(data.data.body.instagram_options).toEqual({
+      trial_reel: { enabled: true, graduation_strategy: "SS_PERFORMANCE" },
+    });
+  });
+
+  it("posts:create --instagram-trial-reel with --instagram-collaborator emits ConfigError (mutually exclusive)", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "Trial reel",
+        "-i",
+        "ig1",
+        "-t",
+        "draft",
+        "--video-url",
+        "https://e.com/reel.mp4",
+        "--post-type",
+        "reel",
+        "--instagram-trial-reel",
+        "--instagram-collaborator",
+        "ig_user_1",
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).not.toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(false);
+    expect(data.error.type).toBe("ConfigError");
+  });
+
+  it("posts:create --instagram-trial-reel-graduation rejects an invalid enum value", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "",
+        "-i",
+        "ig1",
+        "-t",
+        "draft",
+        "--instagram-trial-reel-graduation",
+        "BOGUS",
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).not.toBe(0);
+  });
+
+  it("posts:create --dry-run with --platform-overrides builds the top-level platform_overrides object", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const platformOverrides =
+      '{"tiktok":{"content":{"media":{"video":"https://e.com/clip.mp4"}}}}';
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "Common caption",
+        "-i",
+        "fb1",
+        "-i",
+        "tt1",
+        "-t",
+        "draft",
+        "-m",
+        "https://e.com/common.jpg",
+        "--platform-overrides",
+        platformOverrides,
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(true);
+    expect(data.data.body.platform_overrides).toEqual({
+      tiktok: { content: { media: { video: "https://e.com/clip.mp4" } } },
+    });
+    // Common content is untouched — merge semantics are the backend's job.
+    expect(data.data.body.content.text).toBe("Common caption");
+    expect(data.data.body.content.media.images).toEqual([
+      "https://e.com/common.jpg",
+    ]);
+  });
+
+  it("posts:create --platform-overrides invalid JSON emits ConfigError", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({
+        api_key: "cs_INVALID",
+        active_workspace_id: "ws-bogus",
+      }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "x",
+        "-i",
+        "fb1",
+        "-t",
+        "draft",
+        "--platform-overrides",
+        "{bad json",
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).not.toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(false);
+    expect(data.error.type).toBe("ConfigError");
+  });
+
   it("posts:delete --dry-run no network", () => {
     fs.writeFileSync(
       cfgFile,
@@ -551,5 +758,231 @@ describe("inbox --dry-run paths never hit the network", () => {
     const env = withCfg();
     const r = run(["--json", "inbox:list", "--type", "bogus"], env);
     expect(r.code).not.toBe(0);
+  });
+});
+
+describe("scheduling:best-times validates before touching the network", () => {
+  function withCfg() {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({ api_key: "cs_INVALID", active_workspace_id: "ws-bogus" }),
+    );
+    return { CONTENTSTUDIO_CONFIG_PATH: cfgFile };
+  }
+
+  it("is listed in --help", () => {
+    const r = run(["--help"], { CONTENTSTUDIO_CONFIG_PATH: cfgFile });
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("scheduling:best-times");
+  });
+
+  it("rejects an --account without a <platform>: prefix", () => {
+    const r = run(
+      ["--json", "scheduling:best-times", "--account", "acc-1"],
+      withCfg(),
+    );
+    expect(r.code).not.toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.ok).toBe(false);
+    expect(d.error.type).toBe("ConfigError");
+    expect(d.error.message).toContain("<platform>:<account_id>");
+  });
+
+  it("rejects an unsupported platform", () => {
+    const r = run(
+      ["--json", "scheduling:best-times", "--account", "myspace:acc-1"],
+      withCfg(),
+    );
+    expect(r.code).not.toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.error.type).toBe("ConfigError");
+    expect(d.error.message).toContain("myspace");
+  });
+
+  it("rejects --account combined with --entities", () => {
+    const r = run(
+      [
+        "--json",
+        "scheduling:best-times",
+        "--account",
+        "facebook:acc-1",
+        "--entities",
+        '[{"id":"acc-1","type":"facebook"}]',
+      ],
+      withCfg(),
+    );
+    expect(r.code).not.toBe(0);
+    expect(JSON.parse(r.stdout).error.type).toBe("ConfigError");
+  });
+
+  it("rejects --entities that is not a JSON array of {id, type}", () => {
+    const bad = run(
+      ["--json", "scheduling:best-times", "--entities", '{"id":"acc-1"}'],
+      withCfg(),
+    );
+    expect(bad.code).not.toBe(0);
+    expect(JSON.parse(bad.stdout).error.message).toContain("must be an array");
+
+    const missing = run(
+      ["--json", "scheduling:best-times", "--entities", '[{"id":"acc-1"}]'],
+      withCfg(),
+    );
+    expect(missing.code).not.toBe(0);
+    expect(JSON.parse(missing.stdout).error.message).toContain('"type"');
+  });
+
+  it("rejects out-of-range slot counts", () => {
+    for (const args of [
+      ["--global-slots", "25"],
+      ["--per-account-slots", "0"],
+    ]) {
+      const r = run(["--json", "scheduling:best-times", ...args], withCfg());
+      expect(r.code).not.toBe(0);
+      const d = JSON.parse(r.stdout);
+      expect(d.error.type).toBe("ConfigError");
+      expect(d.error.message).toContain("1 and 24");
+    }
+  });
+});
+
+describe("images commands", () => {
+  function withCfg() {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({ api_key: "cs_INVALID", active_workspace_id: "ws-1" }),
+    );
+    return { CONTENTSTUDIO_CONFIG_PATH: cfgFile };
+  }
+
+  // The story's coverage rule: a tool the API exposes but the CLI does not is a
+  // defect, so the command list is asserted rather than eyeballed.
+  it("lists every image command in --help", () => {
+    const r = run(["--help"], { CONTENTSTUDIO_CONFIG_PATH: cfgFile });
+    expect(r.code).toBe(0);
+    for (const cmd of [
+      "images:tools",
+      "images:models",
+      "images:brand",
+      "images:generate",
+      "images:tool",
+      "images:product-image",
+      "images:headshot",
+      "images:face-swap",
+      "images:outfit-swap",
+      "images:upscale",
+      "images:remove-background",
+    ]) {
+      expect(r.stdout, cmd).toContain(cmd);
+    }
+  });
+
+  it("images:generate --dry-run builds the body and hits no network", () => {
+    const r = run(
+      [
+        "--json",
+        "images:generate",
+        "-p",
+        "autumn coffee flat-lay",
+        "--dimensions",
+        "square_hd",
+        "--use-brand",
+        "--no-enhance-prompt",
+        "--dry-run",
+      ],
+      withCfg(),
+    );
+    expect(r.code).toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.ok).toBe(true);
+    expect(d.data.endpoint).toBe("POST /workspaces/ws-1/ai/images/generate");
+    expect(d.data.body).toEqual({
+      prompt: "autumn coffee flat-lay",
+      dimensions: "square_hd",
+      use_brand: true,
+      enhance_prompt: false,
+    });
+  });
+
+  it("images:face-swap --dry-run maps flags onto the tool's field names", () => {
+    const r = run(
+      [
+        "--json",
+        "images:face-swap",
+        "--target-image-url",
+        "https://example.com/a.png",
+        "--face-image-url",
+        "https://example.com/b.png",
+        "--resolution",
+        "2k",
+        "--dry-run",
+      ],
+      withCfg(),
+    );
+    expect(r.code).toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.data.endpoint).toBe("POST /workspaces/ws-1/ai/images/tools/face-swap");
+    expect(d.data.body).toEqual({
+      target_image_url: "https://example.com/a.png",
+      face_image_url: "https://example.com/b.png",
+      resolution: "2k",
+    });
+  });
+
+  it("images:tool passes an arbitrary tool body through", () => {
+    const r = run(
+      [
+        "--json",
+        "images:tool",
+        "image-to-image",
+        "--body",
+        '{"prompt":"snowy dusk","attachments":["https://example.com/base.png"]}',
+        "--dry-run",
+      ],
+      withCfg(),
+    );
+    expect(r.code).toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.data.endpoint).toBe(
+      "POST /workspaces/ws-1/ai/images/tools/image-to-image",
+    );
+    expect(d.data.body.attachments).toEqual(["https://example.com/base.png"]);
+  });
+
+  it("rejects a local path where an image URL is required", () => {
+    const r = run(
+      ["--json", "images:upscale", "--image-url", "./hero.png", "--dry-run"],
+      withCfg(),
+    );
+    expect(r.code).not.toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.error.type).toBe("ConfigError");
+    expect(d.error.message).toContain("media:upload");
+  });
+
+  it("rejects a prompt over the API's 1000-character limit", () => {
+    const r = run(
+      ["--json", "images:generate", "-p", "x".repeat(1001), "--dry-run"],
+      withCfg(),
+    );
+    expect(r.code).not.toBe(0);
+    expect(JSON.parse(r.stdout).error.message).toContain("limit is 1000");
+  });
+
+  it("rejects a dimensions preset the API does not publish", () => {
+    const r = run(
+      ["--json", "images:generate", "-p", "x", "--dimensions", "wide", "--dry-run"],
+      withCfg(),
+    );
+    expect(r.code).not.toBe(0);
+    expect(r.stderr).toContain("square_hd");
+  });
+
+  it("rejects a non-positive --timeout", () => {
+    const r = run(
+      ["--json", "images:generate", "-p", "x", "--timeout", "0", "--dry-run"],
+      withCfg(),
+    );
+    expect(r.code).not.toBe(0);
+    expect(JSON.parse(r.stdout).error.type).toBe("ConfigError");
   });
 });

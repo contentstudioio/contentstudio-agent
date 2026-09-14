@@ -48,7 +48,7 @@ export function registerLookups<T>(yargs: Argv<T>): Argv<T> {
             out.table(
               ["ID", "Platform", "Name", "Type"],
               items.map((a) => [
-                String(a._id ?? a.platform_identifier ?? "-"),
+                String(a.id ?? a._id ?? a.platform_identifier ?? "-"),
                 a.platform ?? a.channel ?? "-",
                 a.account_name ?? a.name ?? a.username ?? "-",
                 a.account_type ?? "-",
@@ -81,7 +81,7 @@ export function registerLookups<T>(yargs: Argv<T>): Argv<T> {
           () =>
             out.table(
               ["ID", "Name"],
-              items.map((c) => [c._id ?? "-", c.name ?? "-"]),
+              items.map((c) => [c.id ?? c._id ?? "-", c.name ?? "-"]),
             ),
           { pagination: resp.pagination },
         );
@@ -110,7 +110,7 @@ export function registerLookups<T>(yargs: Argv<T>): Argv<T> {
           () =>
             out.table(
               ["ID", "Name"],
-              items.map((c) => [c._id ?? "-", c.name ?? "-"]),
+              items.map((c) => [c.id ?? c._id ?? "-", c.name ?? "-"]),
             ),
           { pagination: resp.pagination },
         );
@@ -139,7 +139,7 @@ export function registerLookups<T>(yargs: Argv<T>): Argv<T> {
           () =>
             out.table(
               ["ID", "Name"],
-              items.map((l) => [l._id ?? "-", l.name ?? "-"]),
+              items.map((l) => [l.id ?? l._id ?? "-", l.name ?? "-"]),
             ),
           { pagination: resp.pagination },
         );
@@ -169,7 +169,7 @@ export function registerLookups<T>(yargs: Argv<T>): Argv<T> {
             out.table(
               ["ID", "Name", "Email", "Role"],
               items.map((t) => [
-                t._id ?? t.user_id ?? "-",
+                t.id ?? t.user_id ?? t._id ?? "-",
                 t.full_name ?? t.name ?? "-",
                 t.email ?? "-",
                 t.role ?? t.permission ?? "-",
@@ -181,7 +181,7 @@ export function registerLookups<T>(yargs: Argv<T>): Argv<T> {
     )
     .command(
       "approval-workflows:list",
-      "List approval workflows in the active workspace. Use an item's _id as --approval-workflow-id on posts:create / posts:update.",
+      "List approval workflows in the active workspace. Use an item's id as --approval-workflow-id on posts:create / posts:update.",
       (y) =>
         y
           .option("page", { type: "number" })
@@ -201,7 +201,7 @@ export function registerLookups<T>(yargs: Argv<T>): Argv<T> {
             out.table(
               ["ID", "Name", "Default", "Levels"],
               items.map((w) => [
-                String(w._id ?? "-"),
+                String(w.id ?? w._id ?? "-"),
                 w.name ?? "-",
                 w.is_default ? "yes" : "no",
                 String(Array.isArray(w.levels) ? w.levels.length : 0),
