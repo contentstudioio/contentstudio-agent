@@ -13,6 +13,7 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 
 import { VERSION } from "./api";
+import { registerAiVideo } from "./commands/aiVideo";
 import { registerAnalytics } from "./commands/analytics";
 import { registerAnalyticsReports } from "./commands/analyticsReports";
 import { registerAuth } from "./commands/auth";
@@ -72,5 +73,6 @@ cli = registerComments(cli);
 cli = registerInbox(cli);
 cli = registerAnalytics(cli);
 cli = registerAnalyticsReports(cli);
+cli = registerAiVideo(cli);
 
 cli.parse();
