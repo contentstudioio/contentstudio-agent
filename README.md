@@ -584,8 +584,8 @@ argument — take the id from `element_details`.
 
 | Inbox type | What it is |
 |------------|------------|
-| `conversation` | A DM thread (Facebook / Instagram) |
-| `post` | A published post with comments on it |
+| `conversation` | A DM thread (Facebook / Instagram — Threads has no messaging) |
+| `post` | A published post with comments on it (Facebook, Instagram, LinkedIn, YouTube, Threads replies and mentions) |
 | `review` | A review (e.g. Google Business Profile) |
 
 Most write commands also need `--platform-id` — the connected account the item
@@ -693,6 +693,35 @@ contentstudio --json inbox:review-reply <review_id> \
 contentstudio --json inbox:note-add <conversation_id> \
   --platform-type facebook --platform-id <account_id> \
   --message "Escalated to billing" --mention <user_id>
+```
+
+### Threads
+
+Threads is a post platform: replies to your posts and mentions of your account.
+It has no messaging — `inbox:send --platform-type threads` is refused with
+*Threads messaging is not available through this integration.* — and no likes.
+Replies are 500 characters; hide only your own posts' top-level replies, delete
+only your own replies.
+
+```bash
+# Reply to a specific reply, however deep it sits in the thread
+contentstudio --json inbox:comment-add <post_id> \
+  --platform-type threads --platform-id <account_id> \
+  --comment-id <reply_id> --message "Thanks — fixed in today's build."
+
+# A reply WITH media publishes asynchronously: this returns send_status=sending
+contentstudio --json inbox:comment-add <post_id> \
+  --platform-type threads --platform-id <account_id> \
+  --comment-id <reply_id> --attachment ./photo.jpg --message "Here it is"
+
+# …so check whether it published (sending | published | failed) and retry a failure
+contentstudio --json inbox:reply-status <send_id> --platform-id <account_id>
+contentstudio --json inbox:reply-retry <send_id> --platform-id <account_id>
+
+# Replies Threads is holding for your approval
+contentstudio --json inbox:pending
+contentstudio --json inbox:reply-approve <reply_id> --platform-id <account_id>
+contentstudio --json inbox:reply-reject <reply_id> --platform-id <account_id>
 ```
 
 Retrying a send? Pass `--idempotency-key <uuid>` so a repeated request isn't

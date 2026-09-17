@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — Threads inbox
+
+- Threads in the Social Inbox: `inbox:list`, `inbox:comments` and every comment
+  write accept Threads (replies to your posts and mentions of your account).
+- New: `inbox:pending`, `inbox:reply-approve`, `inbox:reply-reject` (replies
+  Threads holds for review), `inbox:reply-status` and `inbox:reply-retry`
+  (asynchronous reply state), and `inbox:comments --approval-status pending`.
+- `inbox:comment-add` reports a Threads reply with media as *Sending to
+  Threads…* with its `send_id` instead of claiming it posted; check it with
+  `inbox:reply-status`.
+- `inbox:send --platform-type threads` is refused before any request with
+  *Threads messaging is not available through this integration.*
+
 ## Unreleased — AI Video support
 
 8 new commands under the `ai-video:` namespace, wrapping the ContentStudio

@@ -17,25 +17,30 @@ import type { Argv } from "yargs";
 import {
   MAX_INBOX_BULK_REFS,
   MAX_INBOX_LIMIT,
+  THREADS_NO_MESSAGING,
   addInboxNote,
   addInboxPostComment,
   attachInboxTags,
   bulkUpdateInboxElements,
   createInboxTag,
+  decideInboxReply,
   deleteInboxComment,
   deleteInboxMessage,
   deleteInboxReviewReply,
   deleteInboxTags,
   detachInboxTag,
   getInboxContact,
+  getInboxReplySendStatus,
   inboxSummary,
   listInboxBookmarks,
   listInboxMessages,
   listInboxNotes,
+  listInboxPendingReplies,
   listInboxPostComments,
   listInboxTags,
   markInboxElementRead,
   mergeInboxTags,
+  retryInboxReply,
   searchInboxElements,
   sendInboxMessage,
   setInboxCommentHidden,
@@ -520,8 +525,9 @@ function registerConversations<T>(yargs: Argv<T>): Argv<T> {
           .positional("conversation_id", { type: "string", demandOption: true })
           .option("platform-type", {
             type: "string",
-            choices: ["facebook", "instagram"],
-            describe: "Platform of the conversation (required).",
+            describe:
+              "Platform of the conversation (required): facebook or instagram. " +
+              "Threads has no messaging.",
           })
           .option("platform-id", {
             type: "string",
@@ -547,6 +553,14 @@ function registerConversations<T>(yargs: Argv<T>): Argv<T> {
         const platformId = argv["platform-id"] ?? argv.platformId;
         if (!platformType || !platformId) {
           throw new ConfigError("--platform-type and --platform-id are required.");
+        }
+        if (platformType === "threads") {
+          throw new ConfigError(THREADS_NO_MESSAGING);
+        }
+        if (!["facebook", "instagram"].includes(String(platformType))) {
+          throw new ConfigError(
+            `--platform-type must be facebook or instagram (got ${platformType}).`,
+          );
         }
         if (!argv.message && !argv.file) {
           throw new ConfigError("Provide --message and/or --file.");
@@ -818,7 +832,7 @@ function registerComments<T>(yargs: Argv<T>): Argv<T> {
   return yargs
     .command(
       "inbox:comments <post_id>",
-      "List a post's comments (threaded). Id = element_details.post_id.",
+      "List a post's comments (threaded, any depth). Id = element_details.post_id.",
       (y) =>
         y
           .positional("post_id", { type: "string", demandOption: true })
@@ -827,6 +841,12 @@ function registerComments<T>(yargs: Argv<T>): Argv<T> {
             type: "number",
             alias: "per-page",
             describe: `Items per page (max ${MAX_INBOX_LIMIT}).`,
+          })
+          .option("approval-status", {
+            type: "string",
+            choices: ["pending"],
+            describe:
+              "Threads: list only this post's replies awaiting approval (flat) instead of the thread.",
           }),
       run(async (argv: any, g) => {
         const { cfg, client } = buildClient(g);
@@ -834,6 +854,8 @@ function registerComments<T>(yargs: Argv<T>): Argv<T> {
         const params: Record<string, unknown> = {};
         if (argv.page !== undefined) params.page = Number(argv.page);
         if (argv.limit !== undefined) params.limit = Number(argv.limit);
+        const approval = argv["approval-status"] ?? argv.approvalStatus;
+        if (approval) params.approval_status = String(approval);
 
         const { data, pagination } = await listInboxPostComments(
           client,
@@ -882,7 +904,12 @@ function registerComments<T>(yargs: Argv<T>): Argv<T> {
             default: false,
             describe: "Send as a Facebook private reply (DM) instead of a comment.",
           })
-          .option("attachment", { type: "string", describe: "Path to an attachment." })
+          .option("attachment", {
+            type: "string",
+            describe:
+              "Path to an attachment. On Threads the reply then publishes asynchronously: " +
+              "the command returns send_status=sending; check with inbox:reply-status.",
+          })
           .option("idempotency-key", { type: "string" })
           .option("dry-run", { type: "boolean", default: false }),
       run(async (argv: any, g) => {
@@ -928,7 +955,16 @@ function registerComments<T>(yargs: Argv<T>): Argv<T> {
         // The API reports what it actually created: `resource_type` is
         // "comment", or "message" when it became a private reply.
         out.emitSuccess(data, g, (d: any) => {
-          const kind = d?.sent_comment?.resource_type;
+          const sent = d?.sent_comment;
+          if (sent?.send_status === "sending") {
+            // Accepted, not live: the platform publishes it in the background.
+            out.success(`Reply accepted. Sending to Threads… (send_id ${sent.send_id})`);
+            out.info(
+              `Check whether it published: inbox:reply-status ${sent.send_id} --platform-id ${platformId}`,
+            );
+            return;
+          }
+          const kind = sent?.resource_type;
           if (kind === "message") out.success("Private reply sent as a DM.");
           else if (kind === "comment") out.success("Comment posted.");
           else out.success(privateReply ? "Private reply sent." : "Comment posted.");
@@ -1085,7 +1121,180 @@ function registerComments<T>(yargs: Argv<T>): Argv<T> {
         const data = await setInboxCommentLike(client, wid, cid, false);
         out.emitSuccess(data, g, () => out.success(`Unliked comment ${cid}.`));
       }),
+    )
+    .command(
+      "inbox:pending",
+      "List replies awaiting your approval (Threads holds some replies for review).",
+      (y) =>
+        y
+          .option("platform-id", {
+            type: "string",
+            describe: "Restrict to one connected account.",
+          })
+          .option("page", { type: "number" })
+          .option("limit", {
+            type: "number",
+            alias: "per-page",
+            describe: `Items per page (default 20, max ${MAX_INBOX_LIMIT}).`,
+          }),
+      run(async (argv: any, g) => {
+        const { cfg, client } = buildClient(g);
+        const wid = resolveWorkspace(cfg, g);
+        const params: Record<string, unknown> = {};
+        const platformId = argv["platform-id"] ?? argv.platformId;
+        if (platformId) params.platform_id = String(platformId);
+        if (argv.page !== undefined) params.page = Number(argv.page);
+        if (argv.limit !== undefined) params.limit = Number(argv.limit);
+
+        const { data, pagination } = await listInboxPendingReplies(client, wid, params);
+        out.emitSuccess(
+          data,
+          g,
+          (d) => {
+            const rows = out.listish(d).map((c: any) => [
+              trim(c?.comment_id, 26),
+              trim(personName(c?.from), 18),
+              trim(c?.message, 40),
+              trim(c?.post_id, 22),
+              trim(c?.created_time, 20),
+            ]);
+            out.section("Replies awaiting approval");
+            if (!rows.length) out.info("Nothing is waiting for review.");
+            else out.table(["ID", "FROM", "REPLY", "POST", "AT"], rows);
+          },
+          { pagination },
+        );
+      }),
+    )
+    .command(
+      "inbox:reply-approve <comment_id>",
+      "Approve a reply Threads is holding for review — it becomes visible on the thread.",
+      replyDecisionOptions,
+      replyDecision("approved"),
+    )
+    .command(
+      "inbox:reply-reject <comment_id>",
+      "Reject (ignore) a reply Threads is holding for review — it stays off the thread.",
+      replyDecisionOptions,
+      replyDecision("ignored"),
+    )
+    .command(
+      "inbox:reply-status <send_id>",
+      "Check whether an asynchronous reply (a Threads reply with media) has published.",
+      (y) =>
+        y
+          .positional("send_id", {
+            type: "string",
+            demandOption: true,
+            describe: "The sent_comment.send_id that inbox:comment-add returned.",
+          })
+          .option("platform-id", {
+            type: "string",
+            describe: "Connected account id (required).",
+          }),
+      run(async (argv: any, g) => {
+        const { cfg, client } = buildClient(g);
+        const wid = resolveWorkspace(cfg, g);
+        const platformId = argv["platform-id"] ?? argv.platformId;
+        if (!platformId) throw new ConfigError("--platform-id is required.");
+        const data = await getInboxReplySendStatus(client, wid, String(argv.send_id), {
+          platform_id: String(platformId),
+        });
+        out.emitSuccess(data, g, (d: any) => {
+          const c = d?.comment ?? d;
+          out.status("Send status", String(c?.send_status ?? "unknown"));
+          if (c?.send_status === "sending") out.info("Sending to Threads…");
+          if (c?.send_status === "published") out.status("Published as", String(c?.comment_id));
+          if (c?.send_status === "failed") {
+            out.warning(String(c?.send_error ?? "Could not publish the reply."));
+            if (c?.can_retry) {
+              out.info(
+                `Retry: inbox:reply-retry ${argv.send_id} --platform-id ${platformId}`,
+              );
+            }
+          }
+        });
+      }),
+    )
+    .command(
+      "inbox:reply-retry <send_id>",
+      "Retry a failed asynchronous reply without re-uploading its media.",
+      (y) =>
+        y
+          .positional("send_id", { type: "string", demandOption: true })
+          .option("platform-type", { type: "string", default: "threads" })
+          .option("platform-id", {
+            type: "string",
+            describe: "Connected account id (required).",
+          })
+          .option("dry-run", { type: "boolean", default: false }),
+      run(async (argv: any, g) => {
+        const { cfg, client } = buildClient(g);
+        const wid = resolveWorkspace(cfg, g);
+        const sid = String(argv.send_id);
+        const platformId = argv["platform-id"] ?? argv.platformId;
+        if (!platformId) throw new ConfigError("--platform-id is required.");
+        const body = {
+          platform_type: String(argv["platform-type"] ?? argv.platformType ?? "threads"),
+          platform_id: String(platformId),
+        };
+        if (isDryRun(argv)) {
+          return emitDryRun(
+            g,
+            `POST /workspaces/${wid}/inbox/comments/${enc(sid)}/retry`,
+            body,
+            `retry reply ${sid}`,
+          );
+        }
+        const data = await retryInboxReply(client, wid, sid, body);
+        out.emitSuccess(data, g, () =>
+          out.success(`Retry queued for ${sid}. Sending to Threads…`),
+        );
+      }),
     );
+}
+
+function replyDecisionOptions(y: Argv<any>) {
+  return y
+    .positional("comment_id", { type: "string", demandOption: true })
+    .option("platform-type", { type: "string", default: "threads" })
+    .option("platform-id", {
+      type: "string",
+      describe: "Connected account id (required).",
+    })
+    .option("dry-run", { type: "boolean", default: false });
+}
+
+/** Approve and reject are one endpoint with a `decision`; the two commands share a body. */
+function replyDecision(decision: "approved" | "ignored") {
+  return run(async (argv: any, g) => {
+    const { cfg, client } = buildClient(g);
+    const wid = resolveWorkspace(cfg, g);
+    const cid = String(argv.comment_id);
+    const platformId = argv["platform-id"] ?? argv.platformId;
+    if (!platformId) throw new ConfigError("--platform-id is required.");
+    const body = {
+      platform_type: String(argv["platform-type"] ?? argv.platformType ?? "threads"),
+      platform_id: String(platformId),
+      decision,
+    };
+    if (isDryRun(argv)) {
+      return emitDryRun(
+        g,
+        `PUT /workspaces/${wid}/inbox/comments/${enc(cid)}/approval`,
+        body,
+        `${decision === "approved" ? "approve" : "reject"} reply ${cid}`,
+      );
+    }
+    const data = await decideInboxReply(client, wid, cid, body);
+    out.emitSuccess(data, g, () =>
+      out.success(
+        decision === "approved"
+          ? `Approved reply ${cid}. It is now visible on the thread.`
+          : `Rejected reply ${cid}. It stays off the thread and can still be approved later.`,
+      ),
+    );
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────
