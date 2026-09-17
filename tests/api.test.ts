@@ -41,8 +41,31 @@ import {
   connectAccount,
   createCampaign,
   createLabel,
+  createApprovalWorkflow,
+  createContentCategory,
+  createContentCategorySlot,
+  createPlannerShareLink,
   createPost,
   createWorkspace,
+  deleteApprovalWorkflow,
+  deleteContentCategorySlot,
+  deletePlannerShareLink,
+  duplicateApprovalWorkflow,
+  getApprovalCascadeJob,
+  getContentCategory,
+  getPlannerShareLinkActivity,
+  getPost,
+  getWorkspaceLimits,
+  listContentCategorySlots,
+  listPlannerShareLinks,
+  nextContentCategorySlot,
+  sendPlannerShareLinkInvitations,
+  setDefaultApprovalWorkflow,
+  shuffleContentCategory,
+  updateApprovalWorkflow,
+  updateContentCategory,
+  updateContentCategorySlot,
+  updatePlannerShareLink,
   deleteCampaign,
   deleteLabel,
   deletePost,
@@ -1574,3 +1597,487 @@ describe("AI Video", () => {
     );
   });
 });
+
+describe("Content categories", () => {
+  it("getContentCategory GETs the category with slots inlined", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/content-categories/cat-1`)
+      .reply(
+        200,
+        envelope({
+          id: "cat-1",
+          name: "Evergreen",
+          color: "color_3",
+          slots: [{ id: "s1", day: "monday", hour: 9, minute: 0, period: "AM" }],
+        }),
+      );
+    const data: any = await getContentCategory(mkClient(), "ws-1", "cat-1");
+    expect(data.slots[0].id).toBe("s1");
+  });
+
+  it("createContentCategory POSTs a FLAT accounts[] list", async () => {
+    let sent: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/content-categories`, (b) => {
+        sent = b;
+        return true;
+      })
+      .reply(200, envelope({ id: "cat-2" }));
+    await createContentCategory(mkClient(), "ws-1", {
+      name: "Tips",
+      color: "color_5",
+      accounts: ["a1", "a2"],
+      allowed_member_ids: ["u1"],
+    });
+    expect(sent).toEqual({
+      name: "Tips",
+      color: "color_5",
+      accounts: ["a1", "a2"],
+      allowed_member_ids: ["u1"],
+    });
+  });
+
+  it("updateContentCategory PUTs a partial body", async () => {
+    let sent: any;
+    nock(BASE)
+      .put(`${PATH}/workspaces/ws-1/content-categories/cat-1`, (b) => {
+        sent = b;
+        return true;
+      })
+      .reply(200, envelope({ id: "cat-1", name: "Renamed" }));
+    await updateContentCategory(mkClient(), "ws-1", "cat-1", { name: "Renamed" });
+    expect(sent).toEqual({ name: "Renamed" });
+  });
+
+  it("shuffleContentCategory POSTs and reports zero as a success", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/content-categories/cat-1/shuffle`)
+      .reply(200, envelope({ shuffled_posts_count: 0 }));
+    const data: any = await shuffleContentCategory(mkClient(), "ws-1", "cat-1");
+    expect(data.shuffled_posts_count).toBe(0);
+  });
+
+  it("listContentCategorySlots GETs the slots, carrying weekday_sorting", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/content-categories/cat-1/slots`)
+      .reply(
+        200,
+        envelope([{ id: "s1", day: "sunday", weekday_sorting: 0, hour: 0, minute: 0 }]),
+      );
+    const data: any = await listContentCategorySlots(mkClient(), "ws-1", "cat-1");
+    expect(data[0].weekday_sorting).toBe(0);
+  });
+
+  it("nextContentCategorySlot forwards post_id and treats a null slot as a 200", async () => {
+    let query: any;
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/content-categories/cat-1/slots/next`)
+      .query((q) => {
+        query = q;
+        return true;
+      })
+      .reply(
+        200,
+        envelope({ next_slot: null, timezone: "Asia/Karachi", scheduled: false }),
+      );
+    const data: any = await nextContentCategorySlot(mkClient(), "ws-1", "cat-1", {
+      post_id: "p1",
+    });
+    expect(query.post_id).toBe("p1");
+    expect(data.next_slot).toBeNull();
+  });
+
+  it("createContentCategorySlot sends hour/minute as JSON integers", async () => {
+    let raw = "";
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/content-categories/cat-1/slots`, (b) => {
+        raw = JSON.stringify(b);
+        return true;
+      })
+      .reply(200, envelope({ id: "s9" }));
+    await createContentCategorySlot(mkClient(), "ws-1", "cat-1", {
+      day: "monday",
+      hour: 12,
+      minute: 30,
+      period: "PM",
+    });
+    expect(raw).toContain('"hour":12');
+    expect(raw).not.toContain('"hour":"12"');
+  });
+
+  it("updateContentCategorySlot / deleteContentCategorySlot hit the slot path", async () => {
+    nock(BASE)
+      .put(`${PATH}/workspaces/ws-1/content-categories/cat-1/slots/s1`)
+      .reply(200, envelope({ id: "s1" }));
+    await updateContentCategorySlot(mkClient(), "ws-1", "cat-1", "s1", { minute: 15 });
+
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/content-categories/cat-1/slots/s1`)
+      .reply(200, envelope([]));
+    await deleteContentCategorySlot(mkClient(), "ws-1", "cat-1", "s1");
+    expect(nock.isDone()).toBe(true);
+  });
+});
+
+describe("Approval workflows", () => {
+  it("createApprovalWorkflow POSTs name + levels", async () => {
+    let sent: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/approval-workflows`, (b) => {
+        sent = b;
+        return true;
+      })
+      .reply(200, envelope({ id: "wf-1" }));
+    await createApprovalWorkflow(mkClient(), "ws-1", {
+      name: "Legal",
+      levels: [
+        { level_number: 1, rule: "anyone", members: [{ user_id: "u1" }] },
+      ],
+    });
+    expect(sent.levels[0].rule).toBe("anyone");
+  });
+
+  it("updateApprovalWorkflow with confirmed:true surfaces the 202 cascade envelope", async () => {
+    nock(BASE)
+      .put(`${PATH}/workspaces/ws-1/approval-workflows/wf-1`)
+      .reply(202, {
+        status: true,
+        message: "cascade dispatched",
+        cascade_job_id: "cj-1",
+      });
+    const data: any = await updateApprovalWorkflow(mkClient(), "ws-1", "wf-1", {
+      confirmed: true,
+    });
+    expect(data.cascade_job_id).toBe("cj-1");
+  });
+
+  it("deleteApprovalWorkflow sends ?force=true only when asked", async () => {
+    let query: any;
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/approval-workflows/wf-1`)
+      .query((q) => {
+        query = q;
+        return true;
+      })
+      .reply(202, {
+        status: true,
+        message: "cascade dispatched",
+        was_default: true,
+        cascade_job_id: "cj-2",
+      });
+    const data: any = await deleteApprovalWorkflow(mkClient(), "ws-1", "wf-1", {
+      force: true,
+    });
+    expect(query.force).toBe("true");
+    expect(data.was_default).toBe(true);
+  });
+
+  it("deleteApprovalWorkflow 422 REQUIRES_FORCE_DELETE → ValidationError", async () => {
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/approval-workflows/wf-1`)
+      .reply(422, {
+        status: false,
+        message: "posts are in review",
+        error_code: "REQUIRES_FORCE_DELETE",
+        context: { in_flight_posts_count: 3 },
+      });
+    const err: any = await deleteApprovalWorkflow(
+      mkClient(),
+      "ws-1",
+      "wf-1",
+    ).catch((e) => e);
+    expect(err).toBeInstanceOf(ValidationError);
+    expect((err.payload as any).error_code).toBe("REQUIRES_FORCE_DELETE");
+  });
+
+  it("duplicate / set-default use the right verb and sub-path", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/approval-workflows/wf-1/duplicate`)
+      .reply(200, envelope({ id: "wf-2" }));
+    const dup: any = await duplicateApprovalWorkflow(mkClient(), "ws-1", "wf-1");
+    expect(dup.id).toBe("wf-2");
+
+    nock(BASE)
+      .put(`${PATH}/workspaces/ws-1/approval-workflows/wf-1/set-default`)
+      .reply(200, envelope({ id: "wf-1", is_default: true }));
+    const def: any = await setDefaultApprovalWorkflow(mkClient(), "ws-1", "wf-1");
+    expect(def.is_default).toBe(true);
+  });
+
+  it("getApprovalCascadeJob GETs the literal cascade-jobs segment", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/approval-workflows/cascade-jobs/cj-1`)
+      .reply(
+        200,
+        envelope({ id: "cj-1", status: "completed", total_count: 3, processed_count: 3 }),
+      );
+    const data: any = await getApprovalCascadeJob(mkClient(), "ws-1", "cj-1");
+    expect(data.status).toBe("completed");
+  });
+});
+
+describe("Planner share links", () => {
+  it("listPlannerShareLinks preserves pagination", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/share-links`)
+      .query(true)
+      .reply(200, {
+        status: true,
+        message: "ok",
+        data: [{ id: "sl-1", name: "Client Review" }],
+        current_page: 1,
+        per_page: 10,
+        total: 12,
+        last_page: 2,
+        from: 1,
+        to: 10,
+      });
+    const resp = await listPlannerShareLinks(mkClient(), "ws-1", { page: 1 });
+    expect((resp.data as any[])[0].id).toBe("sl-1");
+    expect(resp.pagination?.has_more).toBe(true);
+  });
+
+  it("createPlannerShareLink POSTs to the planner path, not the analytics one", async () => {
+    let sent: any;
+    const scope = nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/share-links`, (b) => {
+        sent = b;
+        return true;
+      })
+      .reply(200, envelope({ id: "sl-2", link_id: "abc123" }));
+    await createPlannerShareLink(mkClient(), "ws-1", {
+      name: "Client Review",
+      scope: "selection",
+      plans: ["p1"],
+    });
+    expect(scope.isDone()).toBe(true);
+    expect(sent.plans).toEqual(["p1"]);
+  });
+
+  it("updatePlannerShareLink / deletePlannerShareLink address the record id", async () => {
+    nock(BASE)
+      .put(`${PATH}/workspaces/ws-1/share-links/sl-1`)
+      .reply(200, envelope({ id: "sl-1", is_disabled: true }));
+    const upd: any = await updatePlannerShareLink(mkClient(), "ws-1", "sl-1", {
+      is_disabled: true,
+    });
+    expect(upd.is_disabled).toBe(true);
+
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/share-links/sl-1`)
+      .reply(200, envelope([]));
+    await deletePlannerShareLink(mkClient(), "ws-1", "sl-1");
+    expect(nock.isDone()).toBe(true);
+  });
+
+  it("sendPlannerShareLinkInvitations POSTs emails + option", async () => {
+    let sent: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/share-links/sl-1/send-invitations`, (b) => {
+        sent = b;
+        return true;
+      })
+      .reply(200, envelope({ id: "sl-1", outstanding_invitations_count: 2 }));
+    await sendPlannerShareLinkInvitations(mkClient(), "ws-1", "sl-1", {
+      approval_emails: ["a@b.c", "d@e.f"],
+      approval_option: "everyone",
+    });
+    expect(sent).toEqual({
+      approval_emails: ["a@b.c", "d@e.f"],
+      approval_option: "everyone",
+    });
+  });
+
+  it("getPlannerShareLinkActivity keeps `total` off the flat envelope", async () => {
+    let query: any;
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/share-links/sl-1/activity`)
+      .query((q) => {
+        query = q;
+        return true;
+      })
+      .reply(200, {
+        status: true,
+        message: "ok",
+        total: 2,
+        data: [
+          { type: "comment", post_id: "p1", name: "Ann", created_at: "2026-09-02" },
+          { type: "action", post_id: "p1", action: "approve", created_at: "2026-09-01" },
+        ],
+      });
+    const resp = await getPlannerShareLinkActivity(mkClient(), "ws-1", "sl-1", {
+      type: "comment",
+    });
+    expect(query.type).toBe("comment");
+    expect(resp.total).toBe(2);
+    expect(resp.data).toHaveLength(2);
+  });
+});
+
+describe("Single post read + workspace limits", () => {
+  it("getPost GETs one post and exposes the read-side repeat block", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/posts/p1`)
+      .reply(
+        200,
+        envelope({
+          id: "p1",
+          status: "scheduled",
+          scheduling: {
+            repeat: { is_parent: true, is_child: false, parent_id: null, type: "Week", times: 4, gap: 1 },
+          },
+        }),
+      );
+    const data: any = await getPost(mkClient(), "ws-1", "p1");
+    expect(data.scheduling.repeat.is_parent).toBe(true);
+    expect(data.scheduling.repeat.enabled).toBeUndefined();
+  });
+
+  it("getPost 404 → NotFoundError", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/posts/missing`)
+      .reply(404, { message: "post not found" });
+    await expect(getPost(mkClient(), "ws-1", "missing")).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+  });
+
+  it("getWorkspaceLimits GETs /limits and keeps null as unlimited", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/limits`)
+      .reply(200, envelope(limitsPayload()));
+    const data: any = await getWorkspaceLimits(mkClient(), "ws-1");
+    expect(data.limits[0].limit).toBeNull();
+    expect(data.limits[0].is_unlimited).toBe(true);
+    expect(data.limits[2].remaining).toBe(990);
+  });
+
+  it("getWorkspaceLimits carries scope + the on-plan/unlimited booleans", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/limits`)
+      .reply(200, envelope(limitsPayload()));
+    const data: any = await getWorkspaceLimits(mkClient(), "ws-1");
+
+    const social = data.limits.find((l: any) => l.key === "social_accounts");
+    // `account` scope: `remaining` is what is left on the WHOLE account.
+    expect(social.scope).toBe("account");
+    expect(social.period).toBe("lifetime");
+    expect(social.resets_at).toBeNull();
+    expect(social.unit).toBe("count");
+
+    const credits = data.limits.find((l: any) => l.key === "api_credits");
+    expect(credits.scope).toBe("workspace");
+    expect(credits.period).toBe("monthly");
+    expect(credits.resets_at).toBe("2026-10-01T00:00:00+00:00");
+
+    // A null limit is NOT enough on its own — these two separate "unlimited"
+    // from "the plan does not carry it".
+    const listening = data.limits.find((l: any) => l.key === "listening_topics");
+    expect(listening.limit).toBeNull();
+    expect(listening.is_unlimited).toBe(false);
+    expect(listening.is_on_plan).toBe(false);
+
+    expect(data.limits.find((l: any) => l.key === "media_storage").unit).toBe("bytes");
+    expect(data.usage_reset.next_reset_at).toBe("2026-10-01T00:00:00+00:00");
+  });
+
+  it("getWorkspaceLimits response carries no rate_limit or cache block", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/limits`)
+      .reply(200, envelope(limitsPayload()));
+    const data: any = await getWorkspaceLimits(mkClient(), "ws-1");
+    // Removed from the contract: the rate ceiling is on the X-RateLimit-*
+    // response headers, and the endpoint is built live rather than cached.
+    expect(data.rate_limit).toBeUndefined();
+    expect(data.cache).toBeUndefined();
+    expect(Object.keys(data).sort()).toEqual(["limits", "plan", "usage_reset"]);
+  });
+});
+
+/** The current `GET /workspaces/{w}/limits` shape. */
+function limitsPayload() {
+  return {
+    plan: {
+      slug: "agency-annual",
+      name: "Business & Agency - Medium (Annually)",
+      is_annually: true,
+    },
+    limits: [
+      {
+        key: "workspaces",
+        label: "Workspaces",
+        used: 2,
+        limit: null,
+        remaining: null,
+        scope: "account",
+        is_unlimited: true,
+        is_on_plan: true,
+        unit: "count",
+        period: "lifetime",
+        resets_at: null,
+        note: "A running total.",
+      },
+      {
+        key: "social_accounts",
+        label: "Social Accounts",
+        used: 13,
+        limit: 16,
+        remaining: 3,
+        scope: "account",
+        is_unlimited: false,
+        is_on_plan: true,
+        unit: "count",
+        period: "lifetime",
+        resets_at: null,
+        note: "A running total.",
+      },
+      {
+        key: "api_credits",
+        label: "API credits",
+        used: 10,
+        limit: 1000,
+        remaining: 990,
+        scope: "workspace",
+        is_unlimited: false,
+        is_on_plan: true,
+        unit: "count",
+        period: "monthly",
+        resets_at: "2026-10-01T00:00:00+00:00",
+        note: "Shared with webhook deliveries.",
+      },
+      {
+        key: "listening_topics",
+        label: "Listening topics",
+        used: 0,
+        limit: null,
+        remaining: null,
+        scope: "account",
+        is_unlimited: false,
+        is_on_plan: false,
+        unit: "count",
+        period: "lifetime",
+        resets_at: null,
+        note: "Not included in this plan.",
+      },
+      {
+        key: "media_storage",
+        label: "Media storage",
+        used: 5368709120,
+        limit: 107374182400,
+        remaining: 102005473280,
+        scope: "account",
+        is_unlimited: false,
+        is_on_plan: true,
+        unit: "bytes",
+        period: "lifetime",
+        resets_at: null,
+        note: "In bytes.",
+      },
+    ],
+    usage_reset: {
+      last_reset_at: "2026-09-01T00:05:12+00:00",
+      next_reset_at: "2026-10-01T00:00:00+00:00",
+      note: "Resets monthly.",
+    },
+  };
+}

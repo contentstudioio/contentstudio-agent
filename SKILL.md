@@ -79,12 +79,13 @@ contentstudio workspaces:use <workspace_id>
 - **Exit codes** are non-zero on error. Check both `returncode` and `ok`.
 - **Parse stdout only** — human messages go to stderr.
 - **Before any mutating action (posts/comments/media), run it with `--dry-run`** first to verify the payload is correct. `--dry-run` never touches the API.
+- **"Share link" is ambiguous — ask which one.** Two unrelated features carry the name: sharing the scheduled **posts** with a client (for comment/approval) and sharing a live **analytics dashboard**. Only the first is reachable from this API, as `planner-share-links:*`; dashboard sharing is web-app-only. If the user did not say which they mean, ask before running anything — do not assume the one the CLI happens to support. Full wording in the callout under **Planner share links**.
 
 ### Confirm the target workspace before mutating actions
 
 The CLI silently defaults to the active workspace (whatever was set by `workspaces:use`). That default is fine for **read-only** calls (`workspaces:list`, `accounts:list`, `posts:list`, `media:list`, etc.) — just use the active workspace.
 
-But for any **mutating** action — `accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `accounts:remove`, `posts:create`, `posts:update`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`, `workspaces:update`, `workspaces:delete`, `labels:create`, `labels:update`, `labels:delete`, `campaigns:create`, `campaigns:update`, `campaigns:delete`, `team:add`, `team:update`, `team:remove`, every `inbox:*` write (`inbox:send`, `inbox:comment-add`, `inbox:comment-delete`, `inbox:review-reply`, `inbox:update`, `inbox:tag-*`, …), and `ai-video:generate` / `ai-video:run-tool` / `ai-video:cancel-job` — you MUST confirm the workspace with the user first, even if a workspace is already active. Don't assume the active workspace is the one they want to mutate.
+But for any **mutating** action — `accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `accounts:remove`, `posts:create`, `posts:update`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`, `workspaces:update`, `workspaces:delete`, `labels:create`, `labels:update`, `labels:delete`, `campaigns:create`, `campaigns:update`, `campaigns:delete`, `team:add`, `team:update`, `team:remove`, `categories:create`, `categories:update`, `categories:delete`, `categories:shuffle`, `category-slots:create`, `category-slots:update`, `category-slots:delete`, `approval-workflows:create`, `approval-workflows:update`, `approval-workflows:delete`, `approval-workflows:duplicate`, `approval-workflows:set-default`, `approval-workflows:remove-default`, `planner-share-links:create`, `planner-share-links:update`, `planner-share-links:delete`, `planner-share-links:send-invitations`, every `inbox:*` write (`inbox:send`, `inbox:comment-add`, `inbox:comment-delete`, `inbox:review-reply`, `inbox:update`, `inbox:tag-*`, …), and `ai-video:generate` / `ai-video:run-tool` / `ai-video:cancel-job` — you MUST confirm the workspace with the user first, even if a workspace is already active. Don't assume the active workspace is the one they want to mutate.
 
 > **AI video generation costs credits.** `ai-video:generate` and `ai-video:run-tool` submit a real (billed) job the moment they're called without `--dry-run` — run `ai-video:estimate` first when the flags support it, show the estimate/cost to the user, and `--dry-run` the actual call before running it for real. `ai-video:cancel-job` may also charge for partial work already consumed — don't cancel a job on the user's behalf without confirming.
 
@@ -173,7 +174,9 @@ Did the user say "all" / "every" / "complete list" / "every single"?
 ### Endpoints that paginate
 
 All `*:list` commands paginate:
-`workspaces:list`, `accounts:list`, `posts:list`, `comments:list`, `media:list`, `campaigns:list`, `categories:list`, `labels:list`, `team:list`, `approval-workflows:list`, `ai-video:jobs`.
+`workspaces:list`, `accounts:list`, `posts:list`, `comments:list`, `media:list`, `campaigns:list`, `categories:list`, `labels:list`, `team:list`, `approval-workflows:list`, `planner-share-links:list`, `ai-video:jobs`.
+
+`category-slots:list` and `planner-share-links:activity` return everything in one shot and carry no `pagination` block — a category has a handful of slots, and activity answers its own `total`.
 
 Non-list commands (`auth:whoami`, `posts:create`, `posts:delete`, `media:upload`, `ai-video:tools`, `ai-video:models`, `ai-video:job`, etc.) never include `pagination` in their envelope.
 
@@ -202,6 +205,7 @@ All commands are invoked as `contentstudio <group>:<command>`.
 | `workspaces:create --name <n> --logo <url> --timezone <tz> [--super-admin-id <id>] [--note <t>] [--instagram-posting-method api\|mobile] [--first-day-day <Day> --first-day-key <0-6>]` | Create a new workspace (NOT workspace-scoped) |
 | `workspaces:update [<id>] [--name] [--logo] [--timezone] [--note] [--instagram-posting-method] [--first-day-day --first-day-key]` | Update a workspace (defaults to active; ≥1 field required) |
 | `workspaces:delete <id>` | Delete a workspace |
+| `workspaces:limits` | Plan entitlement + what is left of it (see **Check the limits before a batch** below) |
 
 `workspaces:create` / `workspaces:update`:
 - `--name` ≤35 chars, letters/spaces/digits/period only.
@@ -210,6 +214,52 @@ All commands are invoked as `contentstudio <group>:<command>`.
 - First day of week is expressed as two paired flags: `--first-day-day <Sunday..Saturday>` + `--first-day-key <index>` where the key is the day's index (`Sunday=0 … Saturday=6`). Both build `first_day: {day, key}`.
 - `workspaces:update` defaults to the active workspace if `<id>` is omitted and requires at least one field.
 - Errors: `WORKSPACE_DELETE_FAILED` (422) on delete failure; 404 when the workspace doesn't exist.
+
+**Check the limits before a batch.** `workspaces:limits` answers
+`{ plan, limits[], usage_reset }` in one cheap call. It is **not cached** — it
+is built live on every request, so it already reflects writes you just made.
+Run it BEFORE any bulk operation (creating twenty posts, uploading a folder of
+media, generating images) rather than discovering a ceiling halfway through and
+leaving the user with a half-finished job.
+
+- Each entry in `limits[]` is `{ key, label, used, limit, remaining, scope,
+  is_unlimited, is_on_plan, unit, period, resets_at, note }`.
+- **`scope` decides what `used`/`remaining` actually count, and you must read
+  it before sizing a batch:**
+  - `account` — the figure is **shared across every workspace on the
+    account**. `social_accounts` with `remaining: 3` means three more on the
+    **whole account**, not three more in this workspace. Account-scoped keys:
+    `workspaces`, `social_accounts`, `team_members`, `listening_topics`,
+    `automations`, `media_storage`.
+  - `workspace` — this workspace only. That is the eight credit counters:
+    `x_posting_credits`, `listening_mentions`, `ai_text_credits`,
+    `ai_image_credits`, `ai_video_credits`, `video_clip_credits`,
+    `ai_auto_reply_credits`, `api_credits`.
+- **`key` is the stable identifier — never branch on `label` or `note`.** Both
+  are localized: the backend resolves `label` through
+  `limits.labels.<key>` across 8 locales, and composes `note` at runtime from
+  several localized fragments, so an API key on a non-English account gets
+  different display text for the same entry.
+- **`limit: null` is ambiguous on its own** — check the booleans instead:
+  `is_unlimited: true` means no ceiling; `is_on_plan: false` means the plan
+  does not carry the feature at all (that is a hard zero, NOT unlimited). Never
+  render a null `limit`/`remaining` as `0`.
+- `unit` is `count` or `bytes` (`bytes` only for `media_storage`). `period` is
+  `monthly` or `lifetime`; `resets_at` is an ISO 8601 timestamp for `monthly`
+  entries and `null` for `lifetime` ones.
+- The 14 keys, always all present: `workspaces`, `social_accounts`,
+  `team_members`, `x_posting_credits`, `listening_topics`,
+  `listening_mentions`, `ai_text_credits`, `ai_image_credits`,
+  `ai_video_credits`, `video_clip_credits`, `ai_auto_reply_credits`,
+  `automations`, `media_storage`, `api_credits`.
+- `api_credits` is ONE pool shared by API calls and webhook deliveries —
+  spending it here spends it there.
+- `usage_reset` (`last_reset_at` / `next_reset_at`, ISO 8601 with offset) says
+  when the monthly counters roll over.
+- **There is no `rate_limit` and no `cache` block in the body.** The per-caller
+  rate ceiling is published on the `X-RateLimit-Limit` /
+  `X-RateLimit-Remaining` response headers instead; a `429` surfaces as a
+  `RateLimitError` (exit 5).
 
 ### Social accounts (read + connect)
 
@@ -238,6 +288,7 @@ All commands are invoked as `contentstudio <group>:<command>`.
 | Command | Purpose |
 |---------|---------|
 | `posts:list [--status draft\|scheduled\|...] [--date-from] [--date-to]` | List posts |
+| `posts:get <post_id>` | Read one post (identical payload to that post's `posts:list` row) |
 | `posts:create -c "text" -i <account> -t <publish_type> [-s "YYYY-MM-DD HH:MM:SS"] [-m <image_url>]` | Create a post (shortcut mode) |
 | `posts:create -c "text" -t content_category --content-category-id <cat_id>` | Create a content-category post (accounts come from the category) |
 | `posts:create -c "text" -i <fb_account> -t draft --facebook-carousel '<json>'` | Create a Facebook carousel post (2–10 cards) |
@@ -247,13 +298,16 @@ All commands are invoked as `contentstudio <group>:<command>`.
 | `posts:create -c "text" -i <linkedin_account> -t draft --post-type poll --linkedin-options '<json>'` | Create a LinkedIn poll post (text-only) |
 | `posts:create -c "text" -i <ig_account> -t draft --post-type reel --video-url <url> --instagram-trial-reel` | Create an Instagram trial reel (shown to non-followers first) |
 | `posts:create -c "common text" -i <fb_account> -i <tiktok_account> -t draft -m <img_url> --platform-overrides '<json>'` | Same post to multiple platforms with a per-platform content override |
+| `posts:create -c "text" -i <account> -t scheduled -s "..." --repeat-type Week --repeat-times 4 --repeat-gap 1` | Create a post that repeats (spawns 4 independent child posts) |
 | `posts:create --body /path/to/body.json` | Create a post with full JSON body |
 | `posts:update <post_id> [same flags as posts:create]` | Update an existing post (same body). Rejected (422) once the post is published/processing |
 | `posts:delete <post_id> [--delete-from-social]` | Delete a post |
 | `posts:approve <post_id> [--comment "..."]` | Approve a pending post |
 | `posts:reject <post_id> [--comment "..."]` | Reject a pending post |
 
-`-t / --publish-type` values: `scheduled`, `draft`, `queued`, `content_category`.
+`-t / --publish-type` values: `scheduled`, `draft`, `queued`, `content_category`. (`scheduled` and `draft` want `-s / --scheduled-at`.) There is no publish-now type — to send something immediately, schedule it at the next minute.
+
+`posts:get <post_id>` returns a single post whose payload is identical to that post's row in `posts:list` — use it to re-read one post after a write instead of re-listing. A deleted post, a post in another workspace, and a malformed id all answer **404**, so a 404 is not proof the id never existed.
 
 `posts:update <post_id>` takes the **exact same flags and body** as `posts:create` (both `--body` and shortcut mode) — it PUTs to `/workspaces/{w}/posts/{post_id}`. The backend allows the update only while the post's status is **not** `published` or `processing` (otherwise it returns 422). Use `--approval-workflow-action` (below) on update to change an already-attached workflow.
 
@@ -266,6 +320,12 @@ All commands are invoked as `contentstudio <group>:<command>`.
 - `--post-type <type>` — e.g. `feed`, `reel`, `carousel`, `story`, `poll`. A **carousel** is auto-derived by the backend when `post_type=carousel` and 2+ images are attached. A **poll** requires `--post-type poll` **and** a text-only `--linkedin-options` poll block (no media).
 - `--label <id>` (repeatable, max 20) → `labels`.
 - `--campaign-id <id>` → `campaign_id`.
+- **Repeat** `--repeat-type Day|Week|Month` + `--repeat-times <1-30>` + `--repeat-gap <1-99>` → `scheduling.repeat`. All three are required together (the CLI errors locally otherwise) and the CLI always sends `enabled: true` with them, which the backend requires whenever the `repeat` key is present at all.
+  - **Only valid with `--publish-type scheduled`.** `draft`, `queued` and `content_category` are refused, and the CLI errors locally before the call goes out.
+  - `--repeat-gap` must be **≥3 when `--repeat-type Day`** (the composer refuses a tighter daily repeat).
+  - Creates **N independent child posts**, not one recurring post — editing or deleting the parent does not touch the children. Children drop Twitter/X and YouTube accounts. Each child carries the post's approvers.
+  - **Repeat is never inherited on update.** A `posts:update` without the repeat flags creates no children, so a read-modify-write of a repeating post is safe: you cannot accidentally re-spawn the series by round-tripping it.
+  - On the **read** side (`posts:get` / `posts:list`) `scheduling.repeat` is `{is_parent, is_child, parent_id, type, times, gap}` — there is **no `enabled` key**, that one is request-only. Do not feed a read payload's repeat block straight back into an update and expect it to mean the same thing.
 - `--linkedin-options '<json>'` → `linkedin_options` (**LinkedIn accounts**). Pass a JSON **object**; the CLI parses it locally (invalid JSON → `ConfigError`) and sends it verbatim.
   - Shape: `{ "title"?: <string>, "poll"?: { "question": <≤140>, "options": <string[2..4], each ≤30>, "duration": "ONE_DAY" | "THREE_DAYS" | "SEVEN_DAYS" | "FOURTEEN_DAYS" } }`
   - A **poll** must be paired with `--post-type poll` and text-only content (no images/video). Backend validates and 422s on violations.
@@ -437,6 +497,123 @@ Errors: 422 for unknown accounts or a workspace with no connected accounts; 502 
 | `approval-workflows:list` | List approval workflows (use an item's `id` as `--approval-workflow-id`) |
 
 Each `approval-workflows:list` item is `{ id, name, is_default, levels: [{ level_number, title, rule, members: [{ user_id }] }] }`. Use `id` as `posts:create` / `posts:update`'s `--approval-workflow-id`.
+
+`approval-workflows:list` needs the `manage_workflow` permission like the rest of that group — see **Approval workflows (write)** below. `categories:list` is the entry point for **Content categories (write) + posting slots**.
+
+### Content categories (write) + posting slots
+
+A content category is an evergreen bucket: posts dropped into it are dealt out
+across the category's weekly **slots** instead of being given a time each. Use
+`categories:list` to find one, then:
+
+| Command | Purpose |
+|---------|---------|
+| `categories:get <category_id>` | Read one category — the response **inlines `slots[]`**, so no second call |
+| `categories:create --name <n> --color <color_N> [--account <id>…] [--allowed-member <user_id>…]` | Create a category |
+| `categories:update <category_id> [--name] [--color] [--account…] [--allowed-member…]` | Partial update |
+| `categories:delete <category_id>` | Delete a category |
+| `categories:shuffle <category_id>` | Re-deal the category's upcoming posts across its slots |
+| `category-slots:list <category_id>` | List the category's weekly slots |
+| `category-slots:next <category_id> [--post-id <id>]` | Resolve the next free slot |
+| `category-slots:create <category_id> --day <d> --hour <h> --minute <m> --period AM\|PM` | Add one slot |
+| `category-slots:update <category_id> <slot_id> [--day] [--hour] [--minute] [--period]` | Partial update of one slot |
+| `category-slots:delete <category_id> <slot_id>` | Delete one slot |
+
+- `--name` ≤100 chars; `--color` is `color_1` … `color_20` (same enum as labels/campaigns).
+- `--account` (repeatable) is ONE **flat** list of social account ids mixed across platforms — not a per-platform map. `--allowed-member` (repeatable) takes team-member **user ids**; every one must be on the workspace team or the call 422s.
+- Both write commands **replace** the array they are given: `categories:update --account a1` leaves the category with exactly one account.
+- `--day` is lowercase (`sunday` … `saturday`). `--hour` is a **12-hour** clock, `0`–`12`, paired with `--period AM|PM`; **12 normalises to 0**, so hour 12 + `AM` is midnight and hour 12 + `PM` is noon. `--minute` is `0`–`59`. The CLI sends both as JSON **integers** — a string `"12"` slips past the backend's noon normalisation and persists an hour the scheduler cannot match.
+- Slot rows carry `weekday_sorting` (Sunday = 0) — the index the scheduler orders by, so sort on that rather than re-deriving day order from the name.
+- `categories:shuffle` on a category with nothing upcoming answers `{"shuffled_posts_count": 0}` with a **success** envelope. Zero is an answer, not a failure — report it as "nothing to shuffle", not as an error.
+- `category-slots:next` answers `{next_slot, timezone, scheduled}`. **`next_slot: null` comes back on a 200** and means the category has no upcoming slot. `--post-id` asks what slot that specific post would take; `scheduled: true` means the answer is the post's own existing time rather than a free slot.
+- Errors: `CONTENT_CATEGORY_NOT_FOUND` (404), `CONTENT_CATEGORY_ACCESS_DENIED` (403), `CONTENT_CATEGORY_IS_GLOBAL` (422 — global categories cannot be edited or deleted through the API), `CONTENT_CATEGORY_INVALID_ACCOUNT` (422), `CONTENT_CATEGORY_SHUFFLE_FAILED` (422), `CONTENT_CATEGORY_SLOT_NOT_FOUND` (404), `CONTENT_CATEGORY_SLOT_DUPLICATE` (422 — that weekday/time is already taken).
+
+### Approval workflows (write)
+
+| Command | Purpose |
+|---------|---------|
+| `approval-workflows:get <workflow_id>` | Read one workflow |
+| `approval-workflows:create --name <n> --levels '<json>' [--draft]` | Create a workflow |
+| `approval-workflows:update <workflow_id> [--name] [--levels '<json>'] [--draft] [--confirmed]` | Partial update |
+| `approval-workflows:delete <workflow_id> [--force]` | Delete a workflow |
+| `approval-workflows:duplicate <workflow_id>` | Copy it into a new workflow |
+| `approval-workflows:set-default <workflow_id>` | Make it the workspace default |
+| `approval-workflows:remove-default <workflow_id>` | Clear the default flag |
+| `approval-workflows:cascade-job <cascade_job_id>` | Poll a background cascade |
+
+- **Every command in this group — `approval-workflows:list` included — requires the `manage_workflow` permission.** A caller who can read posts may still get a 403 here; that is a permission answer, not a bad key, so do not send the user to `auth:login` for it.
+- `--name` ≤120 chars. `--levels` is a JSON **array**: `[{"level_number":1,"title":"Editors","rule":"anyone"|"everyone","members":[{"user_id":"<id>"}]}]`. `level_number` must be unique across the payload, member ids must be unique within a level, and every member must be on the workspace team.
+- `--draft` → `is_draft`. A workflow with an unstaffed level is a draft regardless of the flag, and **a draft cannot be the default** — `set-default` on one answers `CANNOT_SET_DRAFT_AS_DEFAULT` (422).
+- `is_default` is **not** accepted on create/update — promote with `set-default`.
+- **`--confirmed` on update re-applies the edited workflow to posts already in review.** That answers **202** with `cascade_job_id` instead of the workflow; the write landed but the re-application is still running. Poll it with `approval-workflows:cascade-job <id>` until `status` is terminal before telling the user the change took effect everywhere. Without `--confirmed` the edit only affects future posts.
+- **Delete with posts in flight is refused**: 422 `REQUIRES_FORCE_DELETE`, with `context.in_flight_posts_count`. Show that count to the user and get an explicit go-ahead before re-running with `--force` — forcing deletes the workflow AND cleans those posts up (202 + `cascade_job_id`). The response also carries `was_default: true` when you just removed the workspace's default, leaving it with none until another is promoted; say so.
+- Errors: `APPROVAL_WORKFLOW_NOT_FOUND` (404), `CANNOT_SET_DRAFT_AS_DEFAULT` (422), `REQUIRES_FORCE_DELETE` (422), `CASCADE_JOB_NOT_FOUND` (404).
+
+### Planner share links
+
+A planner share link is a public URL that shows someone outside the workspace
+the scheduled **posts**, optionally letting them comment or approve.
+
+> **STOP — two unrelated features are both called "share link".** If the user
+> said "share link", "share a link", "send a link to the client" or anything
+> else without naming which, **ASK before running anything**. Do not guess, and
+> do not infer one from the surrounding conversation. The two create different
+> records on different endpoints and are not interchangeable.
+>
+> Ask them, roughly:
+>
+> > "Two different things are called a share link in ContentStudio — which do
+> > you want?
+> > **(a) A planner share link** — shows the client the actual scheduled
+> > **posts**, and can let them comment on them or approve/reject them.
+> > **(b) An analytics share link** — shows the client a live **analytics
+> > dashboard/report**: follower growth, engagement, top posts. Read-only
+> > numbers, no posts."
+>
+> Then:
+>
+> - **(a) → `planner-share-links:*`** (this section). Proceed normally.
+> - **(b) → tell them it is not available here.** Analytics dashboard sharing
+>   has no public-API endpoint — it exists only on the internal, session-authed
+>   API the web app uses, which an API key cannot reach. Say so plainly and
+>   point them at the ContentStudio web app (Analytics → the report → Share).
+>   **Do not run `share-links:*`** hoping it works; see the warning in
+>   **Analytics: reports, schedules, share links**.
+>
+> Answering (b) with "I can't do that from here, but here is where you can" is
+> the correct outcome. Quietly building a planner link instead, because that is
+> the one that works, is not — the user would be handed posts when they asked
+> for numbers.
+>
+> Only skip the question when the user has already named the feature
+> unambiguously — "planner share link", "let the client approve these posts" →
+> (a); "analytics share link", "share the report/dashboard" → (b) — or when
+> they are clearly continuing work on a specific link you already created in
+> this conversation. Skipping the question still means answering the branch
+> they named: an unambiguous (b) goes straight to "not available here", not to
+> a planner link.
+
+| Command | Purpose |
+|---------|---------|
+| `planner-share-links:list` | List the workspace's planner share links |
+| `planner-share-links:get <link_id>` | Read one link |
+| `planner-share-links:create --name <n> [--plan <post_id>…] [--note <id>…] [--scope] [--view] [--calendar-date] [--password] [--single-post] [--allow-comments] [--allow-approval-actions] [--show-notes] [--social-selections '<json>']` | Create a link |
+| `planner-share-links:update <link_id> [same fields, plus --disabled / --approval-flow / --approval-email / --approval-option]` | Partial update |
+| `planner-share-links:delete <link_id>` | Delete a link |
+| `planner-share-links:send-invitations <link_id> --email <e>… --approval-option anyone\|everyone` | Turn approval on and email 1–10 reviewers |
+| `planner-share-links:activity <link_id> [--type comment\|action]` | What clients did on the other side |
+
+- **`<link_id>` is the RECORD id** (the resource's `id`), never the public `link_id` slug in the shareable URL. The resource returns both — passing the slug gets you a 404.
+- `--name` is 3–255 chars, **letters, digits and spaces only**. Punctuation is refused, because the name is slugified straight into the public URL. "Q3 Review!" fails; "Q3 Review" works.
+- **One of `--plan` / `--note` is required on EVERY create**, including calendar-window links — the product snapshots the visible posts even when the window extends past them.
+- `--scope selection|future|all` (default `selection`) and `--view list|calendar|compact_list` (default `list`). **`future` and `all` are calendar-only** (they need `--view calendar`), **require `--calendar-date`**, and **cannot collect external approvals** (`--allow-approval-actions` is rejected on them). `--calendar-date` is conversely **refused** on `selection`. It is free-form, e.g. `"2026-01-01 - 2026-03-31"`.
+- `--single-post` needs `--scope selection` and exactly one `--plan`.
+- `--password` (≥4 chars) implies `--password-protected`; pass `--no-password-protected` to lift protection on update.
+- `--plan` and `filters` are **create-only**: the update endpoint rejects the field outright rather than accepting it and quietly dropping it. To change which posts a link shows, make a new link.
+- The response **never** contains `password` or `approval_tokens`. Outstanding invitations surface as the derived `outstanding_invitations_count`.
+- `planner-share-links:activity` answers `{total, data[]}` newest-first, each entry `{type, post_id, name, email, comment, action, created_at}`. `--type` narrows to comments or actions; omit it for both.
+- Prefer `planner-share-links:update <id> --disabled` over `:delete` when a client engagement is only pausing — disabling is reversible, deleting is not.
+- Errors: `SHARE_LINK_NOT_FOUND` (404), `SHARE_LINK_TOKEN_REVOKE_FAILED` (422).
 
 ### Labels (write)
 
@@ -905,13 +1082,34 @@ they need `--competitor-report-id` (from `competitor-reports:list`) and ignore
 refused before the call goes out — it used to be accepted, dropped, and surface
 minutes later as "Combined report generation failed".
 
-**Share links are how a client sees a report without an account.** Create one
-with `share-links:create`; `--password` protects it, `--date-range` pins the
-period so the numbers stop moving, and omitting the range leaves it rolling.
-There is no expiry — a link lives until you disable or delete it, so prefer
-`share-links:disable` (reversible) over `share-links:delete` when a client
-engagement pauses. A share link is independent of any generated report: it shows
-the live dashboard, not a PDF.
+> **⚠️ The `share-links:*` commands do not work — every one of them 404s.**
+> They target `/api/v1/workspaces/{w}/analytics/share-links`, and **no such
+> route exists**. Analytics share links live only on the internal SPA API
+> (`/api/analytics/share-link/create|list|update|delete`, singular segment,
+> different verbs), which is behind session/JWT auth that an API key cannot
+> satisfy — so they cannot simply be repointed either.
+>
+> **Do not debug this as an auth, workspace or key problem, and do not retry
+> it.** There is nothing on the caller's side to fix. If the user wants to
+> share an analytics dashboard, tell them it is not available through the
+> public API and send them to the ContentStudio web app (Analytics → the report
+> → Share) instead.
+>
+> Everything else in this section — `reports:*`, `report-schedules:*`,
+> `competitor*:*` — is unaffected and works normally.
+
+**Sharing an analytics dashboard is a web-app-only feature.** A client can see
+a live dashboard of numbers without an account, but that link has to be created
+in the web app; this API does not expose it (see the warning above). Once one
+exists it has no expiry — it lives until someone disables or deletes it in the
+app, and disabling is the reversible option when a client engagement merely
+pauses. Such a link is independent of any generated report: it shows the live
+dashboard, not a PDF.
+
+**Not to be confused with `planner-share-links:*`**, which shares the scheduled
+**posts** for client comment/approval and *is* fully supported here. When the
+user says a bare "share link", ask which they mean before doing anything — see
+the callout under **Planner share links**.
 
 `report-schedules:run` asks for an immediate send, but the API acknowledges the
 request without returning a report id. Confirm with `report-schedules:get` and
@@ -1343,6 +1541,26 @@ contentstudio --json inbox:tag-attach <element_ref> \
 | `CreditLimitError` | 403 | Out of AI image credits (`images:*`). Top up or wait for the cycle; nothing was charged. Re-running `auth:login` cannot fix it. |
 | `BackendError` | 5xx or network | Retry after a short backoff. |
 | `ConfigError` | — (local) | Missing API key / workspace; run `auth:login` or pass flags. |
+
+**Two things the `error.type` alone will not tell you.**
+
+1. **`posts:*` answers validation failures with 400, every other endpoint with
+   422.** A 400 maps to the generic `ContentStudioError` (exit 1), not
+   `ValidationError` — so never decide "was this a validation problem?" from
+   the status code or the error type alone.
+2. **Branch on the stable `error_code` instead.** The API's body is preserved
+   verbatim on `error.response`, so `error.response.error_code` is the value to
+   switch on: `VALIDATION_ERROR`, `CONTENT_CATEGORY_NOT_FOUND`,
+   `CONTENT_CATEGORY_ACCESS_DENIED`, `CONTENT_CATEGORY_IS_GLOBAL`,
+   `CONTENT_CATEGORY_SHUFFLE_FAILED`, `CONTENT_CATEGORY_INVALID_ACCOUNT`,
+   `CONTENT_CATEGORY_SLOT_NOT_FOUND`, `CONTENT_CATEGORY_SLOT_DUPLICATE`,
+   `APPROVAL_WORKFLOW_NOT_FOUND`, `CANNOT_SET_DRAFT_AS_DEFAULT`,
+   `REQUIRES_FORCE_DELETE`, `CASCADE_JOB_NOT_FOUND`, `SHARE_LINK_NOT_FOUND`,
+   `SHARE_LINK_TOKEN_REVOKE_FAILED`, `RATE_LIMIT_EXCEEDED`.
+
+Two success shapes are also worth not mistaking for failures: a 200 carrying
+`next_slot: null` (`category-slots:next`) and a 200 carrying
+`shuffled_posts_count: 0` (`categories:shuffle`). Both are answers.
 
 ---
 

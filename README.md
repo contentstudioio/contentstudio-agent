@@ -409,6 +409,27 @@ Body schema:
 }
 ```
 
+### Repeating posts
+
+```bash
+# Every week for 4 weeks, starting at the scheduled time
+contentstudio --json posts:create -c "Weekly tip" -i <account_id> \
+  -t scheduled -s "2026-10-01 09:00:00" \
+  --repeat-type Week --repeat-times 4 --repeat-gap 1 --dry-run
+```
+
+All three flags are required together. `--repeat-type` is `Day`, `Week` or
+`Month`; `--repeat-times` is 1–30; `--repeat-gap` is 1–99 and must be **≥3 for
+`Day`**. Repeat requires `--publish-type scheduled` — the CLI errors locally on
+any other publish type.
+
+This creates **N independent child posts**, not one recurring post — editing or
+deleting the parent leaves the children alone, and children drop Twitter/X and
+YouTube accounts. Repeat is never inherited on update, so re-sending a post
+without the flags creates nothing new and a read-modify-write is safe. On the
+read side `scheduling.repeat` is `{is_parent, is_child, parent_id, type, times,
+gap}` — no `enabled` key, which is request-only.
+
 ### Always preview with `--dry-run` first
 
 For agents (and cautious humans), every mutating command supports `--dry-run` — it prints the request body and exits **without** calling the API:
@@ -497,6 +518,16 @@ contentstudio --json posts:list --status draft --per-page 5
 contentstudio --json posts:list --status scheduled --status published
 contentstudio --json posts:list --date-from 2026-04-01 --date-to 2026-04-30
 ```
+
+### Read one post
+
+```bash
+contentstudio --json posts:get <post_id>
+```
+
+The payload is identical to that post's row in `posts:list`, so this is the
+cheap way to re-read a single post after a write. A deleted post, a post in
+another workspace, and a malformed id all answer **404**.
 
 ### Update a post
 
@@ -1319,13 +1350,42 @@ The CLI wraps these endpoints from the ContentStudio v1 public API (plus the wor
 | POST   | `/workspaces/{w}/add/facebook-group` | `accounts:add-facebook-group` |
 | DELETE | `/workspaces/{w}/accounts/{account_id}` | `accounts:remove <account_id>` |
 | GET    | `/workspaces/{w}/campaigns` | `campaigns:list` |
+| GET    | `/workspaces/{w}/limits` | `workspaces:limits` |
 | GET    | `/workspaces/{w}/content-categories` | `categories:list` |
+| POST   | `/workspaces/{w}/content-categories` | `categories:create` |
+| GET    | `/workspaces/{w}/content-categories/{c}` | `categories:get` |
+| PUT    | `/workspaces/{w}/content-categories/{c}` | `categories:update` |
+| DELETE | `/workspaces/{w}/content-categories/{c}` | `categories:delete` |
+| POST   | `/workspaces/{w}/content-categories/{c}/shuffle` | `categories:shuffle` |
+| GET    | `/workspaces/{w}/content-categories/{c}/slots` | `category-slots:list` |
+| POST   | `/workspaces/{w}/content-categories/{c}/slots` | `category-slots:create` |
+| GET    | `/workspaces/{w}/content-categories/{c}/slots/next` | `category-slots:next` |
+| PUT    | `/workspaces/{w}/content-categories/{c}/slots/{s}` | `category-slots:update` |
+| DELETE | `/workspaces/{w}/content-categories/{c}/slots/{s}` | `category-slots:delete` |
+| GET    | `/workspaces/{w}/approval-workflows` | `approval-workflows:list` |
+| POST   | `/workspaces/{w}/approval-workflows` | `approval-workflows:create` |
+| GET    | `/workspaces/{w}/approval-workflows/{id}` | `approval-workflows:get` |
+| PUT    | `/workspaces/{w}/approval-workflows/{id}` | `approval-workflows:update` |
+| DELETE | `/workspaces/{w}/approval-workflows/{id}` | `approval-workflows:delete` |
+| POST   | `/workspaces/{w}/approval-workflows/{id}/duplicate` | `approval-workflows:duplicate` |
+| PUT    | `/workspaces/{w}/approval-workflows/{id}/set-default` | `approval-workflows:set-default` |
+| PUT    | `/workspaces/{w}/approval-workflows/{id}/remove-default` | `approval-workflows:remove-default` |
+| GET    | `/workspaces/{w}/approval-workflows/cascade-jobs/{id}` | `approval-workflows:cascade-job` |
+| GET    | `/workspaces/{w}/share-links` | `planner-share-links:list` |
+| POST   | `/workspaces/{w}/share-links` | `planner-share-links:create` |
+| GET    | `/workspaces/{w}/share-links/{id}` | `planner-share-links:get` |
+| PUT    | `/workspaces/{w}/share-links/{id}` | `planner-share-links:update` |
+| DELETE | `/workspaces/{w}/share-links/{id}` | `planner-share-links:delete` |
+| POST   | `/workspaces/{w}/share-links/{id}/send-invitations` | `planner-share-links:send-invitations` |
+| GET    | `/workspaces/{w}/share-links/{id}/activity` | `planner-share-links:activity` |
 | GET    | `/workspaces/{w}/labels` | `labels:list` |
 | GET    | `/workspaces/{w}/team-members` | `team:list` |
 | GET    | `/workspaces/{w}/media` | `media:list` |
 | POST   | `/workspaces/{w}/media` | `media:upload` |
 | GET    | `/workspaces/{w}/posts` | `posts:list` |
+| GET    | `/workspaces/{w}/posts/{p}` | `posts:get` |
 | POST   | `/workspaces/{w}/posts` | `posts:create` |
+| PUT    | `/workspaces/{w}/posts/{p}` | `posts:update` |
 | DELETE | `/workspaces/{w}/posts/{p}` | `posts:delete` |
 | POST   | `/workspaces/{w}/posts/{p}/approval` | `posts:approve`, `posts:reject` |
 | POST   | `/workspaces/{w}/scheduling/optimal-times` | `scheduling:best-times` |
@@ -1418,9 +1478,32 @@ contentstudio --json campaigns:list                                             
 contentstudio --json categories:list                                                # Content categories
 contentstudio --json labels:list                                                    # Labels
 contentstudio --json team:list                                                      # Team members
+contentstudio --json workspaces:limits                                              # Plan limits + usage
+
+# Content categories + posting slots
+contentstudio --json categories:get <category_id>                                   # Category (slots inlined)
+contentstudio --json categories:create --name "Tips" --color color_3 --account <id> # Create
+contentstudio --json categories:shuffle <category_id>                               # Re-deal upcoming posts
+contentstudio --json category-slots:list <category_id>                              # Weekly slots
+contentstudio --json category-slots:next <category_id> [--post-id <id>]             # Next free slot
+contentstudio --json category-slots:create <category_id> --day monday --hour 9 --minute 0 --period AM
+
+# Approval workflows (all require the manage_workflow permission)
+contentstudio --json approval-workflows:get <workflow_id>                           # Read one
+contentstudio --json approval-workflows:create --name "Legal" --levels '<json>'     # Create
+contentstudio --json approval-workflows:update <id> --confirmed                     # Re-apply to in-flight posts
+contentstudio --json approval-workflows:delete <id> [--force]                       # Delete
+contentstudio --json approval-workflows:cascade-job <cascade_job_id>                # Poll the cascade
+
+# Planner share links (posts, not analytics)
+contentstudio --json planner-share-links:list                                       # List
+contentstudio --json planner-share-links:create --name "Client Review" --plan <post_id>
+contentstudio --json planner-share-links:send-invitations <id> --email a@b.c --approval-option anyone
+contentstudio --json planner-share-links:activity <id> [--type comment]             # Client comments/actions
 
 # Posts
 contentstudio --json posts:list [--status draft] [--date-from] [--date-to]         # List posts
+contentstudio --json posts:get <post_id>                                           # Read one post
 contentstudio --json posts:create -c "text" -i <account_id> -t draft               # Create (shortcut)
 contentstudio --json posts:create --body /path/to/post.json                        # Create (full body)
 contentstudio --json posts:create [...] --dry-run                                  # Preview, no API call
@@ -1492,7 +1575,9 @@ contentstudio report-schedules:resume <schedule_id>
 contentstudio report-schedules:run <schedule_id>                                    # Send one now
 contentstudio report-schedules:delete <schedule_id>
 
-# Analytics — client-facing share links (no ContentStudio account needed)
+# Analytics — client-facing share links
+# NOTE: these currently 404 — there is no public-API route behind them (the
+# endpoints are internal/JWT-only). Share an analytics dashboard from the web app.
 contentstudio share-links:create --title "Q3" --platform instagram \
   --account-id <id> --date-range "2026-07-01 - 2026-09-30" --password secret        # Pinned + protected
 contentstudio --json share-links:list
@@ -1552,7 +1637,10 @@ contentstudio-agent/
 │       ├── auth.ts           # auth:login, auth:logout, auth:whoami, auth:status
 │       ├── workspaces.ts     # workspaces:list, workspaces:use, workspaces:current
 │       ├── lookups.ts        # accounts/campaigns/categories/labels/team list commands
-│       ├── posts.ts          # posts:list, posts:create, posts:delete, posts:approve, posts:reject
+│       ├── contentCategories.ts  # categories:* writes + category-slots:*
+│       ├── approvalWorkflows.ts  # approval-workflows:* writes + cascade-job polling
+│       ├── plannerShareLinks.ts  # planner-share-links:* (posts, not analytics)
+│       ├── posts.ts          # posts:list, posts:get, posts:create, posts:delete, posts:approve, posts:reject
 │       ├── comments.ts       # comments:list, comments:add
 │       ├── media.ts          # media:list, media:upload
 │       └── images.ts         # images:generate, images:tools/models/brand, one command per tool
