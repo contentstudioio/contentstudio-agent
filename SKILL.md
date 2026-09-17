@@ -548,8 +548,7 @@ Also needed for most writes:
 | `inbox:list` | Search the inbox. `--type conversation\|post\|review` (repeatable), `--action all\|marked_done\|archived\|assigned`, `--search`, `--tag`, `--channels '{"facebook":["<acct>"]}'`, `--page`, `--limit` |
 | `inbox:summary` | Counts per bucket — cheap way to answer "anything unread?" |
 | `inbox:messages <conversation_id>` | Messages in a DM thread. Id = `element_details.element_id`. `--sort-order asc\|desc` |
-| `inbox:comments <post_id>` | A post's comments (threaded, replies nested under `children` at any depth with `parent_id`; inbound media under `attachment[]`). Id = `element_details.post_id`. `--approval-status pending` lists only the post's replies awaiting approval (Threads) |
-| `inbox:pending` | Replies awaiting your approval across the workspace (Threads). `--platform-id`, `--page`, `--limit` |
+| `inbox:comments <post_id>` | A post's comments (threaded, replies nested under `children` at any depth with `parent_id`; inbound media under `attachment[]`). Id = `element_details.post_id`. |
 | `inbox:notes <conversation_id>` | Internal notes (team-only). Id = `element_details.element_id`. Paginated |
 | `inbox:bookmarks <conversation_id>` | Starred messages. Id = `element_details.element_id`. Paginated |
 | `inbox:contact <element_ref>` | Contact profile behind an element |
@@ -572,7 +571,6 @@ Also needed for most writes:
 | `inbox:update` | Bulk state change. `--element` (repeatable, **max 100**) plus **exactly one** of `--status done\|pending`, `--archived`, `--assigned` (pair with `--assigned-to '{"id":"<user>"}'`) |
 | `inbox:comment-hide` / `inbox:comment-unhide <comment_id>` | Hide/unhide. Unhide needs `--platform-type` + `--platform-id` |
 | `inbox:comment-like` / `inbox:comment-unlike <comment_id>` | Facebook only (Threads has no likes) |
-| `inbox:reply-approve` / `inbox:reply-reject <comment_id>` | Decide a reply Threads is holding for review. `--platform-id`. Approve publishes it to the thread; reject keeps it off and it can still be approved later. Mutating — `--dry-run` first |
 | `inbox:reply-status <send_id>` | State of an asynchronous reply: `send_status` `sending` \| `published` \| `failed` (+ `send_error`, `can_retry`). `--platform-id` |
 | `inbox:reply-retry <send_id>` | Re-queue a failed asynchronous reply without re-uploading. `--platform-id`. Mutating |
 | `inbox:comment-delete <comment_id>` | Delete. Needs `--platform-type` + `--platform-id`; LinkedIn also needs `--comment-urn` |
@@ -602,7 +600,6 @@ plainly when they apply — do not guess around them:
 | Hide scope | Only top-level replies on your own posts can be hidden (`can_hide`); hiding cascades to the reply's descendants |
 | Delete scope | Only replies your account wrote can be deleted (`can_remove`, `is_own`) |
 | Reply length | 500 characters |
-| Approvals | Some replies arrive `reply_approval_status: pending`. `inbox:pending` lists them; `inbox:reply-approve` / `inbox:reply-reject` decide |
 | Media replies are asynchronous | `inbox:comment-add --attachment` returns `send_status: sending` + `send_id`. Say the reply is being processed. `inbox:reply-status <send_id>` tells you when it is `published` or `failed` (with the reason); `inbox:reply-retry` re-queues a failure when `can_retry` is true |
 
 If `accounts:list --platform threads` shows no account, say the workspace has no
@@ -622,7 +619,7 @@ report the first page as the whole inbox.
 
 | Limit | Where |
 |-------|-------|
-| `--limit` ≤ 200 | `inbox:list`, `inbox:messages`, `inbox:comments`, `inbox:pending` |
+| `--limit` ≤ 200 | `inbox:list`, `inbox:messages`, `inbox:comments` |
 | ≤ 100 `--element` refs per call | `inbox:update` |
 | Exactly **one** operation per call | `inbox:update` — `--status`, `--archived`, and `--assigned` are mutually exclusive; run separate commands |
 | Tag name ≤ 50 chars | `inbox:tag-create` |

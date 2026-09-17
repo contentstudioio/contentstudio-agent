@@ -4,9 +4,7 @@
 
 - Threads in the Social Inbox: `inbox:list`, `inbox:comments` and every comment
   write accept Threads (replies to your posts and mentions of your account).
-- New: `inbox:pending`, `inbox:reply-approve`, `inbox:reply-reject` (replies
-  Threads holds for review), `inbox:reply-status` and `inbox:reply-retry`
-  (asynchronous reply state), and `inbox:comments --approval-status pending`.
+- New: `inbox:reply-status` and `inbox:reply-retry` (asynchronous reply state).
 - `inbox:comment-add` reports a Threads reply with media as *Sending to
   Threads…* with its `send_id` instead of claiming it posted; check it with
   `inbox:reply-status`.

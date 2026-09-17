@@ -1017,30 +1017,6 @@ describe("inbox Threads commands", () => {
     expect(err.message).toBe("Threads messaging is not available through this integration.");
   });
 
-  it("inbox:reply-approve --dry-run PUTs the approval with decision=approved", () => {
-    const r = run(
-      ["--json", "inbox:reply-approve", "r1", "--platform-id", "th-1", "--dry-run"],
-      withCfg(),
-    );
-    expect(r.code).toBe(0);
-    const d = JSON.parse(r.stdout);
-    expect(d.data.endpoint).toBe("PUT /workspaces/ws-bogus/inbox/comments/r1/approval");
-    expect(d.data.body).toEqual({
-      platform_type: "threads",
-      platform_id: "th-1",
-      decision: "approved",
-    });
-  });
-
-  it("inbox:reply-reject --dry-run sends decision=ignored", () => {
-    const r = run(
-      ["--json", "inbox:reply-reject", "r1", "--platform-id", "th-1", "--dry-run"],
-      withCfg(),
-    );
-    expect(r.code).toBe(0);
-    expect(JSON.parse(r.stdout).data.body.decision).toBe("ignored");
-  });
-
   it("inbox:reply-retry --dry-run POSTs to /retry with the platform pair", () => {
     const r = run(
       ["--json", "inbox:reply-retry", "threads-send-1", "--platform-id", "th-1", "--dry-run"],
@@ -1060,11 +1036,4 @@ describe("inbox Threads commands", () => {
     expect(JSON.parse(r.stdout).error.type).toBe("ConfigError");
   });
 
-  it("inbox:comments rejects an unknown --approval-status", () => {
-    const r = run(
-      ["--json", "inbox:comments", "post-1", "--approval-status", "rejected"],
-      withCfg(),
-    );
-    expect(r.code).not.toBe(0);
-  });
 });

@@ -1123,13 +1123,12 @@ export async function listInboxPostComments(
   c: Client,
   workspaceId: string,
   postId: string,
-  params: { page?: number; limit?: number; approval_status?: "pending" } = {},
+  params: { page?: number; limit?: number } = {},
 ): Promise<PaginatedResponse<any[]>> {
   assertLimit(params.limit);
   // Response: {status, comments[], total_comment_count, total_threads}.
   // `total_threads` is the pagination universe (top-level threads);
-  // `total_comment_count` counts replies too, so it must NOT drive paging —
-  // except for the flat pending-approval list, where it is the universe.
+  // `total_comment_count` counts replies too, so it must NOT drive paging.
   const raw = await c.request<any>(
     "GET",
     `${inboxBase(workspaceId)}/posts/${seg(postId)}/comments`,
@@ -1141,7 +1140,7 @@ export async function listInboxPostComments(
     pagination: buildPagination({
       page: params.page,
       perPage: params.limit,
-      total: params.approval_status ? raw?.total_comment_count : raw?.total_threads,
+      total: raw?.total_threads,
       count: data.length,
     }),
   };
@@ -1240,7 +1239,7 @@ export function setInboxCommentLike(
   return liked ? c.put<any>(p) : c.delete<any>(p);
 }
 
-// ── Threads: approvals and asynchronous replies ─────────────────
+// ── Threads: asynchronous replies ───────────────────────────────
 
 /**
  * Verbatim from the web app and the API's own error, so every surface explains
@@ -1248,42 +1247,6 @@ export function setInboxCommentLike(
  */
 export const THREADS_NO_MESSAGING =
   "Threads messaging is not available through this integration.";
-
-/** GET /workspaces/{w}/inbox/comments/pending — replies awaiting approval. */
-export async function listInboxPendingReplies(
-  c: Client,
-  workspaceId: string,
-  params: { platform_id?: string; page?: number; limit?: number } = {},
-): Promise<PaginatedResponse<any[]>> {
-  assertLimit(params.limit);
-  const raw = await c.request<any>(
-    "GET",
-    `${inboxBase(workspaceId)}/comments/pending`,
-    { params, unwrap: false },
-  );
-  const data = inboxCollection(raw, "comments");
-  return {
-    data,
-    pagination: buildPagination({
-      page: params.page,
-      perPage: params.limit,
-      total: raw?.total_comment_count,
-      count: data.length,
-    }),
-  };
-}
-
-/** PUT /workspaces/{w}/inbox/comments/{id}/approval — approve or reject a pending reply. */
-export function decideInboxReply(
-  c: Client,
-  workspaceId: string,
-  commentId: string,
-  body: { platform_type: string; platform_id: string; decision: "approved" | "ignored" },
-) {
-  return c.put<any>(`${inboxBase(workspaceId)}/comments/${seg(commentId)}/approval`, {
-    json: body,
-  });
-}
 
 /**
  * GET /workspaces/{w}/inbox/comments/{send_id}/send — state of an asynchronous

@@ -22,9 +22,7 @@ import {
   getAiVideoJob,
   getInboxContact,
   inboxSummary,
-  decideInboxReply,
   getInboxReplySendStatus,
-  listInboxPendingReplies,
   retryInboxReply,
   listAiVideoJobs,
   listAiVideoModels,
@@ -1579,44 +1577,7 @@ describe("AI Video", () => {
   });
 });
 
-describe("Inbox — Threads approvals and asynchronous replies", () => {
-  it("listInboxPendingReplies unwraps `comments` and pages by total_comment_count", async () => {
-    nock(BASE)
-      .get(`${PATH}/workspaces/ws-1/inbox/comments/pending`)
-      .query({ platform_id: "th-1", limit: 5 })
-      .reply(200, {
-        status: true,
-        comments: [{ comment_id: "r1", reply_approval_status: "pending" }],
-        total_comment_count: 7,
-        remaining_results: 2,
-      });
-
-    const res = await listInboxPendingReplies(mkClient(), "ws-1", {
-      platform_id: "th-1",
-      limit: 5,
-    });
-    expect(res.data).toEqual([{ comment_id: "r1", reply_approval_status: "pending" }]);
-    expect(res.pagination).toMatchObject({ total: 7, per_page: 5 });
-  });
-
-  it("decideInboxReply PUTs the decision with the platform pair", async () => {
-    let received: any;
-    nock(BASE)
-      .put(`${PATH}/workspaces/ws-1/inbox/comments/r1/approval`, (b) => {
-        received = b;
-        return true;
-      })
-      .reply(200, { status: true, comment: { comment_id: "r1", reply_approval_status: "ignored" } });
-
-    const res: any = await decideInboxReply(mkClient(), "ws-1", "r1", {
-      platform_type: "threads",
-      platform_id: "th-1",
-      decision: "ignored",
-    });
-    expect(received).toEqual({ platform_type: "threads", platform_id: "th-1", decision: "ignored" });
-    expect(res.comment.reply_approval_status).toBe("ignored");
-  });
-
+describe("Inbox — Threads asynchronous replies", () => {
   it("getInboxReplySendStatus reads the send state by send_id", async () => {
     nock(BASE)
       .get(`${PATH}/workspaces/ws-1/inbox/comments/threads-send-1/send`)

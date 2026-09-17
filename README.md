@@ -717,11 +717,6 @@ contentstudio --json inbox:comment-add <post_id> \
 # …so check whether it published (sending | published | failed) and retry a failure
 contentstudio --json inbox:reply-status <send_id> --platform-id <account_id>
 contentstudio --json inbox:reply-retry <send_id> --platform-id <account_id>
-
-# Replies Threads is holding for your approval
-contentstudio --json inbox:pending
-contentstudio --json inbox:reply-approve <reply_id> --platform-id <account_id>
-contentstudio --json inbox:reply-reject <reply_id> --platform-id <account_id>
 ```
 
 Retrying a send? Pass `--idempotency-key <uuid>` so a repeated request isn't

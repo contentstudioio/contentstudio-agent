@@ -23,7 +23,6 @@ import {
   attachInboxTags,
   bulkUpdateInboxElements,
   createInboxTag,
-  decideInboxReply,
   deleteInboxComment,
   deleteInboxMessage,
   deleteInboxReviewReply,
@@ -35,7 +34,6 @@ import {
   listInboxBookmarks,
   listInboxMessages,
   listInboxNotes,
-  listInboxPendingReplies,
   listInboxPostComments,
   listInboxTags,
   markInboxElementRead,
@@ -841,12 +839,6 @@ function registerComments<T>(yargs: Argv<T>): Argv<T> {
             type: "number",
             alias: "per-page",
             describe: `Items per page (max ${MAX_INBOX_LIMIT}).`,
-          })
-          .option("approval-status", {
-            type: "string",
-            choices: ["pending"],
-            describe:
-              "Threads: list only this post's replies awaiting approval (flat) instead of the thread.",
           }),
       run(async (argv: any, g) => {
         const { cfg, client } = buildClient(g);
@@ -854,8 +846,6 @@ function registerComments<T>(yargs: Argv<T>): Argv<T> {
         const params: Record<string, unknown> = {};
         if (argv.page !== undefined) params.page = Number(argv.page);
         if (argv.limit !== undefined) params.limit = Number(argv.limit);
-        const approval = argv["approval-status"] ?? argv.approvalStatus;
-        if (approval) params.approval_status = String(approval);
 
         const { data, pagination } = await listInboxPostComments(
           client,
@@ -1123,62 +1113,6 @@ function registerComments<T>(yargs: Argv<T>): Argv<T> {
       }),
     )
     .command(
-      "inbox:pending",
-      "List replies awaiting your approval (Threads holds some replies for review).",
-      (y) =>
-        y
-          .option("platform-id", {
-            type: "string",
-            describe: "Restrict to one connected account.",
-          })
-          .option("page", { type: "number" })
-          .option("limit", {
-            type: "number",
-            alias: "per-page",
-            describe: `Items per page (default 20, max ${MAX_INBOX_LIMIT}).`,
-          }),
-      run(async (argv: any, g) => {
-        const { cfg, client } = buildClient(g);
-        const wid = resolveWorkspace(cfg, g);
-        const params: Record<string, unknown> = {};
-        const platformId = argv["platform-id"] ?? argv.platformId;
-        if (platformId) params.platform_id = String(platformId);
-        if (argv.page !== undefined) params.page = Number(argv.page);
-        if (argv.limit !== undefined) params.limit = Number(argv.limit);
-
-        const { data, pagination } = await listInboxPendingReplies(client, wid, params);
-        out.emitSuccess(
-          data,
-          g,
-          (d) => {
-            const rows = out.listish(d).map((c: any) => [
-              trim(c?.comment_id, 26),
-              trim(personName(c?.from), 18),
-              trim(c?.message, 40),
-              trim(c?.post_id, 22),
-              trim(c?.created_time, 20),
-            ]);
-            out.section("Replies awaiting approval");
-            if (!rows.length) out.info("Nothing is waiting for review.");
-            else out.table(["ID", "FROM", "REPLY", "POST", "AT"], rows);
-          },
-          { pagination },
-        );
-      }),
-    )
-    .command(
-      "inbox:reply-approve <comment_id>",
-      "Approve a reply Threads is holding for review — it becomes visible on the thread.",
-      replyDecisionOptions,
-      replyDecision("approved"),
-    )
-    .command(
-      "inbox:reply-reject <comment_id>",
-      "Reject (ignore) a reply Threads is holding for review — it stays off the thread.",
-      replyDecisionOptions,
-      replyDecision("ignored"),
-    )
-    .command(
       "inbox:reply-status <send_id>",
       "Check whether an asynchronous reply (a Threads reply with media) has published.",
       (y) =>
@@ -1254,48 +1188,6 @@ function registerComments<T>(yargs: Argv<T>): Argv<T> {
     );
 }
 
-function replyDecisionOptions(y: Argv<any>) {
-  return y
-    .positional("comment_id", { type: "string", demandOption: true })
-    .option("platform-type", { type: "string", default: "threads" })
-    .option("platform-id", {
-      type: "string",
-      describe: "Connected account id (required).",
-    })
-    .option("dry-run", { type: "boolean", default: false });
-}
-
-/** Approve and reject are one endpoint with a `decision`; the two commands share a body. */
-function replyDecision(decision: "approved" | "ignored") {
-  return run(async (argv: any, g) => {
-    const { cfg, client } = buildClient(g);
-    const wid = resolveWorkspace(cfg, g);
-    const cid = String(argv.comment_id);
-    const platformId = argv["platform-id"] ?? argv.platformId;
-    if (!platformId) throw new ConfigError("--platform-id is required.");
-    const body = {
-      platform_type: String(argv["platform-type"] ?? argv.platformType ?? "threads"),
-      platform_id: String(platformId),
-      decision,
-    };
-    if (isDryRun(argv)) {
-      return emitDryRun(
-        g,
-        `PUT /workspaces/${wid}/inbox/comments/${enc(cid)}/approval`,
-        body,
-        `${decision === "approved" ? "approve" : "reject"} reply ${cid}`,
-      );
-    }
-    const data = await decideInboxReply(client, wid, cid, body);
-    out.emitSuccess(data, g, () =>
-      out.success(
-        decision === "approved"
-          ? `Approved reply ${cid}. It is now visible on the thread.`
-          : `Rejected reply ${cid}. It stays off the thread and can still be approved later.`,
-      ),
-    );
-  });
-}
 
 // ─────────────────────────────────────────────────────────────────
 // Reviews — reply upsert / delete.
