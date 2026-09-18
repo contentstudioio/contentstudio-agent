@@ -4,10 +4,8 @@
 
 - Threads in the Social Inbox: `inbox:list`, `inbox:comments` and every comment
   write accept Threads (replies to your posts and mentions of your account).
-- New: `inbox:reply-status` and `inbox:reply-retry` (asynchronous reply state).
-- `inbox:comment-add` reports a Threads reply with media as *Sending to
-  Threads…* with its `send_id` instead of claiming it posted; check it with
-  `inbox:reply-status`.
+- `inbox:comment-add --attachment` on Threads waits (up to five minutes) for
+  Threads to process the media before the reply publishes.
 - `inbox:send --platform-type threads` is refused before any request with
   *Threads messaging is not available through this integration.*
 

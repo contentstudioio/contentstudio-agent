@@ -22,8 +22,6 @@ import {
   getAiVideoJob,
   getInboxContact,
   inboxSummary,
-  getInboxReplySendStatus,
-  retryInboxReply,
   listAiVideoJobs,
   listAiVideoModels,
   listAiVideoTools,
@@ -1574,40 +1572,5 @@ describe("AI Video", () => {
     await expect(cancelAiVideoJob(mkClient(), "ws-1", "job-1")).rejects.toBeInstanceOf(
       ConflictError,
     );
-  });
-});
-
-describe("Inbox — Threads asynchronous replies", () => {
-  it("getInboxReplySendStatus reads the send state by send_id", async () => {
-    nock(BASE)
-      .get(`${PATH}/workspaces/ws-1/inbox/comments/threads-send-1/send`)
-      .query({ platform_id: "th-1" })
-      .reply(200, {
-        status: true,
-        comment: { send_id: "threads-send-1", send_status: "failed", can_retry: true },
-      });
-
-    const res: any = await getInboxReplySendStatus(mkClient(), "ws-1", "threads-send-1", {
-      platform_id: "th-1",
-    });
-    expect(res.comment.send_status).toBe("failed");
-    expect(res.comment.can_retry).toBe(true);
-  });
-
-  it("retryInboxReply POSTs the platform pair to /retry", async () => {
-    let received: any;
-    nock(BASE)
-      .post(`${PATH}/workspaces/ws-1/inbox/comments/threads-send-1/retry`, (b) => {
-        received = b;
-        return true;
-      })
-      .reply(200, { status: true, comment: { send_status: "sending" } });
-
-    const res: any = await retryInboxReply(mkClient(), "ws-1", "threads-send-1", {
-      platform_type: "threads",
-      platform_id: "th-1",
-    });
-    expect(received).toEqual({ platform_type: "threads", platform_id: "th-1" });
-    expect(res.comment.send_status).toBe("sending");
   });
 });

@@ -709,14 +709,11 @@ contentstudio --json inbox:comment-add <post_id> \
   --platform-type threads --platform-id <account_id> \
   --comment-id <reply_id> --message "Thanks — fixed in today's build."
 
-# A reply WITH media publishes asynchronously: this returns send_status=sending
+# A reply WITH media: Threads processes the file first, so this can take up to
+# five minutes before it returns the published reply
 contentstudio --json inbox:comment-add <post_id> \
   --platform-type threads --platform-id <account_id> \
   --comment-id <reply_id> --attachment ./photo.jpg --message "Here it is"
-
-# …so check whether it published (sending | published | failed) and retry a failure
-contentstudio --json inbox:reply-status <send_id> --platform-id <account_id>
-contentstudio --json inbox:reply-retry <send_id> --platform-id <account_id>
 ```
 
 Retrying a send? Pass `--idempotency-key <uuid>` so a repeated request isn't

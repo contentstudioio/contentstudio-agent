@@ -559,7 +559,7 @@ Also needed for most writes:
 | Command | Purpose |
 |---------|---------|
 | `inbox:send <conversation_id>` | Send a DM (id = `element_details.element_id`). Needs `--platform-type facebook\|instagram`, `--platform-id`, and `--message` and/or `--file`. `--idempotency-key` de-dupes a retry. **Threads is refused** with *Threads messaging is not available through this integration.* — tell the user exactly that |
-| `inbox:comment-add <post_id>` | Comment on a post. `--comment-id` makes it a threaded reply **to any depth** (pass the reply's `comment_id`, not the top of the thread); `--private-reply` sends a Facebook DM instead; `--attachment <path>` attaches a file. On **Threads** an attachment makes the reply **asynchronous**: the command returns `sent_comment.send_status: sending` and a `send_id` — report it as *being processed*, never as posted, and check with `inbox:reply-status` |
+| `inbox:comment-add <post_id>` | Comment on a post. `--comment-id` makes it a threaded reply **to any depth** (pass the reply's `comment_id`, not the top of the thread); `--private-reply` sends a Facebook DM instead; `--attachment <path>` attaches a file. On **Threads** an attachment makes the call slow: it waits up to five minutes for Threads to process the media, then publishes and returns like any other send |
 | `inbox:review-reply <review_id>` | Add or replace a review reply (upsert). `--platform-id`, `--reply` |
 | `inbox:note-add <conversation_id>` | Add an internal note. `--mention <user_id>` (repeatable). Not customer-visible |
 
@@ -571,8 +571,6 @@ Also needed for most writes:
 | `inbox:update` | Bulk state change. `--element` (repeatable, **max 100**) plus **exactly one** of `--status done\|pending`, `--archived`, `--assigned` (pair with `--assigned-to '{"id":"<user>"}'`) |
 | `inbox:comment-hide` / `inbox:comment-unhide <comment_id>` | Hide/unhide. Unhide needs `--platform-type` + `--platform-id` |
 | `inbox:comment-like` / `inbox:comment-unlike <comment_id>` | Facebook only (Threads has no likes) |
-| `inbox:reply-status <send_id>` | State of an asynchronous reply: `send_status` `sending` \| `published` \| `failed` (+ `send_error`, `can_retry`). `--platform-id` |
-| `inbox:reply-retry <send_id>` | Re-queue a failed asynchronous reply without re-uploading. `--platform-id`. Mutating |
 | `inbox:comment-delete <comment_id>` | Delete. Needs `--platform-type` + `--platform-id`; LinkedIn also needs `--comment-urn` |
 | `inbox:star` / `inbox:unstar <message_id>` | Star a message |
 | `inbox:message-delete <message_id>` | Soft-delete a message. `--platform-id` |
@@ -600,7 +598,7 @@ plainly when they apply — do not guess around them:
 | Hide scope | Only top-level replies on your own posts can be hidden (`can_hide`); hiding cascades to the reply's descendants |
 | Delete scope | Only replies your account wrote can be deleted (`can_remove`, `is_own`) |
 | Reply length | 500 characters |
-| Media replies are asynchronous | `inbox:comment-add --attachment` returns `send_status: sending` + `send_id`. Say the reply is being processed. `inbox:reply-status <send_id>` tells you when it is `published` or `failed` (with the reason); `inbox:reply-retry` re-queues a failure when `can_retry` is true |
+| Media replies are slow | `inbox:comment-add --attachment` waits up to five minutes for Threads to process the media, then publishes. Do not treat the wait as a hang; the result is a normal send result or Threads' reason for refusing |
 
 If `accounts:list --platform threads` shows no account, say the workspace has no
 Threads account connected rather than reporting an empty Threads inbox.

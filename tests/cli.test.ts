@@ -1017,23 +1017,4 @@ describe("inbox Threads commands", () => {
     expect(err.message).toBe("Threads messaging is not available through this integration.");
   });
 
-  it("inbox:reply-retry --dry-run POSTs to /retry with the platform pair", () => {
-    const r = run(
-      ["--json", "inbox:reply-retry", "threads-send-1", "--platform-id", "th-1", "--dry-run"],
-      withCfg(),
-    );
-    expect(r.code).toBe(0);
-    const d = JSON.parse(r.stdout);
-    expect(d.data.endpoint).toBe(
-      "POST /workspaces/ws-bogus/inbox/comments/threads-send-1/retry",
-    );
-    expect(d.data.body).toEqual({ platform_type: "threads", platform_id: "th-1" });
-  });
-
-  it("inbox:reply-status requires --platform-id", () => {
-    const r = run(["--json", "inbox:reply-status", "threads-send-1"], withCfg());
-    expect(r.code).not.toBe(0);
-    expect(JSON.parse(r.stdout).error.type).toBe("ConfigError");
-  });
-
 });

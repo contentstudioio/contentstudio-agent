@@ -1239,7 +1239,7 @@ export function setInboxCommentLike(
   return liked ? c.put<any>(p) : c.delete<any>(p);
 }
 
-// ── Threads: asynchronous replies ───────────────────────────────
+// ── Threads ─────────────────────────────────────────────────────
 
 /**
  * Verbatim from the web app and the API's own error, so every surface explains
@@ -1247,33 +1247,6 @@ export function setInboxCommentLike(
  */
 export const THREADS_NO_MESSAGING =
   "Threads messaging is not available through this integration.";
-
-/**
- * GET /workspaces/{w}/inbox/comments/{send_id}/send — state of an asynchronous
- * reply: `comment.send_status` is sending | published | failed.
- */
-export function getInboxReplySendStatus(
-  c: Client,
-  workspaceId: string,
-  sendId: string,
-  params: { platform_id: string },
-) {
-  return c.request<any>("GET", `${inboxBase(workspaceId)}/comments/${seg(sendId)}/send`, {
-    params,
-  });
-}
-
-/** POST /workspaces/{w}/inbox/comments/{send_id}/retry — re-queue a failed reply. */
-export function retryInboxReply(
-  c: Client,
-  workspaceId: string,
-  sendId: string,
-  body: { platform_type: string; platform_id: string },
-) {
-  return c.post<any>(`${inboxBase(workspaceId)}/comments/${seg(sendId)}/retry`, {
-    json: body,
-  });
-}
 
 // ── Reviews ──────────────────────────────────────────────────────
 

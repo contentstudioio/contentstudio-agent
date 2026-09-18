@@ -29,7 +29,6 @@ import {
   deleteInboxTags,
   detachInboxTag,
   getInboxContact,
-  getInboxReplySendStatus,
   inboxSummary,
   listInboxBookmarks,
   listInboxMessages,
@@ -38,7 +37,6 @@ import {
   listInboxTags,
   markInboxElementRead,
   mergeInboxTags,
-  retryInboxReply,
   searchInboxElements,
   sendInboxMessage,
   setInboxCommentHidden,
@@ -897,8 +895,8 @@ function registerComments<T>(yargs: Argv<T>): Argv<T> {
           .option("attachment", {
             type: "string",
             describe:
-              "Path to an attachment. On Threads the reply then publishes asynchronously: " +
-              "the command returns send_status=sending; check with inbox:reply-status.",
+              "Path to an attachment. On Threads the call waits (up to five minutes) for " +
+              "the media to process before the reply publishes.",
           })
           .option("idempotency-key", { type: "string" })
           .option("dry-run", { type: "boolean", default: false }),
@@ -945,16 +943,7 @@ function registerComments<T>(yargs: Argv<T>): Argv<T> {
         // The API reports what it actually created: `resource_type` is
         // "comment", or "message" when it became a private reply.
         out.emitSuccess(data, g, (d: any) => {
-          const sent = d?.sent_comment;
-          if (sent?.send_status === "sending") {
-            // Accepted, not live: the platform publishes it in the background.
-            out.success(`Reply accepted. Sending to Threads… (send_id ${sent.send_id})`);
-            out.info(
-              `Check whether it published: inbox:reply-status ${sent.send_id} --platform-id ${platformId}`,
-            );
-            return;
-          }
-          const kind = sent?.resource_type;
+          const kind = d?.sent_comment?.resource_type;
           if (kind === "message") out.success("Private reply sent as a DM.");
           else if (kind === "comment") out.success("Comment posted.");
           else out.success(privateReply ? "Private reply sent." : "Comment posted.");
@@ -1110,80 +1099,6 @@ function registerComments<T>(yargs: Argv<T>): Argv<T> {
         }
         const data = await setInboxCommentLike(client, wid, cid, false);
         out.emitSuccess(data, g, () => out.success(`Unliked comment ${cid}.`));
-      }),
-    )
-    .command(
-      "inbox:reply-status <send_id>",
-      "Check whether an asynchronous reply (a Threads reply with media) has published.",
-      (y) =>
-        y
-          .positional("send_id", {
-            type: "string",
-            demandOption: true,
-            describe: "The sent_comment.send_id that inbox:comment-add returned.",
-          })
-          .option("platform-id", {
-            type: "string",
-            describe: "Connected account id (required).",
-          }),
-      run(async (argv: any, g) => {
-        const { cfg, client } = buildClient(g);
-        const wid = resolveWorkspace(cfg, g);
-        const platformId = argv["platform-id"] ?? argv.platformId;
-        if (!platformId) throw new ConfigError("--platform-id is required.");
-        const data = await getInboxReplySendStatus(client, wid, String(argv.send_id), {
-          platform_id: String(platformId),
-        });
-        out.emitSuccess(data, g, (d: any) => {
-          const c = d?.comment ?? d;
-          out.status("Send status", String(c?.send_status ?? "unknown"));
-          if (c?.send_status === "sending") out.info("Sending to Threads…");
-          if (c?.send_status === "published") out.status("Published as", String(c?.comment_id));
-          if (c?.send_status === "failed") {
-            out.warning(String(c?.send_error ?? "Could not publish the reply."));
-            if (c?.can_retry) {
-              out.info(
-                `Retry: inbox:reply-retry ${argv.send_id} --platform-id ${platformId}`,
-              );
-            }
-          }
-        });
-      }),
-    )
-    .command(
-      "inbox:reply-retry <send_id>",
-      "Retry a failed asynchronous reply without re-uploading its media.",
-      (y) =>
-        y
-          .positional("send_id", { type: "string", demandOption: true })
-          .option("platform-type", { type: "string", default: "threads" })
-          .option("platform-id", {
-            type: "string",
-            describe: "Connected account id (required).",
-          })
-          .option("dry-run", { type: "boolean", default: false }),
-      run(async (argv: any, g) => {
-        const { cfg, client } = buildClient(g);
-        const wid = resolveWorkspace(cfg, g);
-        const sid = String(argv.send_id);
-        const platformId = argv["platform-id"] ?? argv.platformId;
-        if (!platformId) throw new ConfigError("--platform-id is required.");
-        const body = {
-          platform_type: String(argv["platform-type"] ?? argv.platformType ?? "threads"),
-          platform_id: String(platformId),
-        };
-        if (isDryRun(argv)) {
-          return emitDryRun(
-            g,
-            `POST /workspaces/${wid}/inbox/comments/${enc(sid)}/retry`,
-            body,
-            `retry reply ${sid}`,
-          );
-        }
-        const data = await retryInboxReply(client, wid, sid, body);
-        out.emitSuccess(data, g, () =>
-          out.success(`Retry queued for ${sid}. Sending to Threads…`),
-        );
       }),
     );
 }
