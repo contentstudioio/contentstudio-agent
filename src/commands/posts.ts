@@ -372,7 +372,7 @@ function applyPostBodyOptions<T>(y: Argv<T>): Argv<T> {
  */
 function buildPostBodyFromArgv(argv: any): Record<string, unknown> {
   if (argv.body) {
-    return readJsonFile(argv.body, "--body");
+    return normalizePostBody(readJsonFile(argv.body, "--body"));
   }
 
   const contentCategoryId =
@@ -570,6 +570,88 @@ function shortText(p: any, limit = 60): string {
     p?.content?.text ?? p?.common?.content?.text ?? p?.text ?? p?.message ?? "";
   const flat = String(text).replace(/\n/g, " ").trim();
   return flat.length > limit ? flat.slice(0, limit - 1) + "…" : flat;
+}
+
+/**
+ * Accept the shapes the lookup endpoints hand back — "id", { id }, { _id } —
+ * and reduce them to the bare id the posts API takes.
+ */
+function toResourceId(value: unknown): string | undefined {
+  if (typeof value === "string") return value.trim() || undefined;
+  if (typeof value === "number") return String(value);
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const o = value as Record<string, unknown>;
+    const id = o.id ?? o._id;
+    if (typeof id === "string") return id.trim() || undefined;
+    if (typeof id === "number") return String(id);
+  }
+  return undefined;
+}
+
+/**
+ * Reshape a hand-written `--body` payload into the contract the API documents.
+ *
+ * A --body file is written against what `labels:list` and `campaigns:list`
+ * return, so labels and campaigns arrive as whole objects and scheduling
+ * borrows the internal `execute_time` name. The API wants label ID strings,
+ * `campaign_id`, and `scheduling.scheduled_at`. Sent as-is, the label objects
+ * returned a 500, the campaign was dropped without a word, and the schedule
+ * time never arrived.
+ *
+ * An entry that carries no id is an error rather than something to drop —
+ * silently posting without the label the caller asked for is worse than
+ * refusing.
+ */
+export function normalizePostBody(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...body };
+
+  if (out.labels !== undefined) {
+    const labels = Array.isArray(out.labels) ? out.labels : [out.labels];
+    out.labels = labels.map((label, i) => {
+      const id = toResourceId(label);
+      if (!id) {
+        throw new ConfigError(
+          `--body: labels[${i}] has no id — pass the label ID as a string, or an object with an "id".`,
+        );
+      }
+      return id;
+    });
+  }
+
+  if (out.campaign !== undefined) {
+    const id = toResourceId(out.campaign);
+    if (!id) {
+      throw new ConfigError(
+        '--body: campaign has no id — pass campaign_id as a string, or an object with an "id".',
+      );
+    }
+    delete out.campaign;
+    if (out.campaign_id === undefined) out.campaign_id = id;
+  }
+
+  if (out.campaign_id !== undefined && out.campaign_id !== null) {
+    const id = toResourceId(out.campaign_id);
+    if (!id) {
+      throw new ConfigError(
+        '--body: campaign_id has no id — pass it as a string, or an object with an "id".',
+      );
+    }
+    out.campaign_id = id;
+  }
+
+  const scheduling = out.scheduling;
+  if (scheduling && typeof scheduling === "object" && !Array.isArray(scheduling)) {
+    const s = { ...(scheduling as Record<string, unknown>) };
+    if (s.scheduled_at === undefined && s.execute_time !== undefined) {
+      s.scheduled_at = s.execute_time;
+    }
+    delete s.execute_time;
+    out.scheduling = s;
+  }
+
+  return out;
 }
 
 function readJsonFile(p: string, flagName: string): Record<string, unknown> {

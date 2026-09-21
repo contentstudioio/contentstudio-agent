@@ -1122,7 +1122,9 @@ The top-level `-c / --content` is the lead tweet; each `--twitter` item is a fol
 
 **14. Full-control body via `--body <file.json>`** (any field the shortcut flags don't cover)
 
-Use `--body` when you need fields beyond the shortcut flags (per-platform `platform_overrides`, `twitter_options`/`threads_options`, `timezone`, `hide_client`, etc.). The JSON is sent verbatim, so build it for the platform(s) your `accounts` belong to — a Facebook-carousel body, a Threads body, and a Twitter body are separate posts, not one combined payload.
+Use `--body` when you need fields beyond the shortcut flags (per-platform `platform_overrides`, `twitter_options`/`threads_options`, `timezone`, `hide_client`, etc.). The JSON is sent as written apart from the id normalization below, so build it for the platform(s) your `accounts` belong to — a Facebook-carousel body, a Threads body, and a Twitter body are separate posts, not one combined payload.
+
+**Reference labels and campaigns by id, not by the object `labels:list` / `campaigns:list` returned.** The API takes `"labels": ["<label_id>"]` and `"campaign_id": "<campaign_id>"`, and the schedule time is `scheduling.scheduled_at`, not `execute_time`. The CLI rewrites the shapes it recognises (`{ "id": … }` / `{ "_id": … }`, a bare `campaign` key, `execute_time`) and refuses a label or campaign that carries no id at all, so a body written against the list output still goes through. Anything it cannot rewrite now comes back as a 400 validation error naming the field — `errors: { "labels.0": [...] }` — rather than the 500 `{"message": "Server Error"}` this used to return. Write the documented shape anyway: normalization is a safety net, not the contract.
 
 ```jsonc
 // /tmp/post.json — a Facebook carousel via the full body schema
