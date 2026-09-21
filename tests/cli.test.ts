@@ -986,3 +986,35 @@ describe("images commands", () => {
     expect(JSON.parse(r.stdout).error.type).toBe("ConfigError");
   });
 });
+
+describe("inbox Threads commands", () => {
+  function withCfg() {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({ api_key: "cs_INVALID", active_workspace_id: "ws-bogus" }),
+    );
+    return { CONTENTSTUDIO_CONFIG_PATH: cfgFile };
+  }
+
+  it("inbox:send refuses Threads with the shared no-messaging sentence, before any request", () => {
+    const r = run(
+      [
+        "--json",
+        "inbox:send",
+        "conv-1",
+        "--platform-type",
+        "threads",
+        "--platform-id",
+        "th-1",
+        "--message",
+        "hi",
+      ],
+      withCfg(),
+    );
+    expect(r.code).not.toBe(0);
+    const err = JSON.parse(r.stdout).error;
+    expect(err.type).toBe("ConfigError");
+    expect(err.message).toBe("Threads messaging is not available through this integration.");
+  });
+
+});

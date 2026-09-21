@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Threads inbox
+
+- Threads in the Social Inbox: `inbox:list`, `inbox:comments` and every comment
+  write accept Threads (replies to your posts and mentions of your account).
+- `inbox:comment-add --attachment` on Threads waits (up to five minutes) for
+  Threads to process the media before the reply publishes.
+- `inbox:send --platform-type threads` is refused before any request with
+  *Threads messaging is not available through this integration.*
+
 ## Unreleased — AI Video support
 
 8 new commands under the `ai-video:` namespace, wrapping the ContentStudio

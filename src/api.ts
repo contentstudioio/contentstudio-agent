@@ -1239,6 +1239,15 @@ export function setInboxCommentLike(
   return liked ? c.put<any>(p) : c.delete<any>(p);
 }
 
+// ── Threads ─────────────────────────────────────────────────────
+
+/**
+ * Verbatim from the web app and the API's own error, so every surface explains
+ * the gap in one voice.
+ */
+export const THREADS_NO_MESSAGING =
+  "Threads messaging is not available through this integration.";
+
 // ── Reviews ──────────────────────────────────────────────────────
 
 /** PUT /workspaces/{w}/inbox/reviews/{id}/reply — upsert (add or replace). */
