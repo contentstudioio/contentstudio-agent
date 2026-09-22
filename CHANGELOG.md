@@ -1,6 +1,47 @@
 # Changelog
 
-## Unreleased — AI Video support
+## 1.6.0 — content categories, approval workflows, planner share links, AI video (2026-09-17)
+
+The public API gained five surfaces; the CLI mirrors all of them.
+
+- **Content categories** — `categories:get` / `create` / `update` / `delete` /
+  `shuffle`, plus a `category-slots:` group (`list` / `next` / `create` /
+  `update` / `delete`). `categories:get` inlines `slots[]`, so reading one
+  category is one call. `--hour` / `--minute` are sent as JSON integers: the
+  backend normalises noon with a strict `hour === 12` comparison that a string
+  slips past, persisting an hour the scheduler cannot match.
+- **Approval workflows** — `approval-workflows:get` / `create` / `update` /
+  `delete` / `duplicate` / `set-default` / `remove-default`, plus
+  `approval-workflows:cascade-job` to poll the background re-application.
+  `--confirmed` on update and `--force` on delete both answer 202 with a
+  `cascade_job_id`. Every command in the group, the pre-existing
+  `approval-workflows:list` included, needs the `manage_workflow` permission.
+- **Planner share links** — `planner-share-links:list` / `get` / `create` /
+  `update` / `delete` / `send-invitations` / `activity`. Named apart from the
+  analytics `share-links:*` group on purpose: these share posts, those share a
+  dashboard. `<link_id>` is the record id, not the public slug.
+- **`posts:get <post_id>`** — read one post; the payload matches that post's
+  `posts:list` row.
+- **Repeating posts** — `--repeat-type` / `--repeat-times` / `--repeat-gap` on
+  `posts:create` and `posts:update`, sent as `scheduling.repeat` with the
+  `enabled: true` the backend requires. Gated to `--publish-type scheduled`;
+  the backend also accepts repeat on `now`, but `now` is not a publish type the
+  apps expose. Repeat is never inherited on update, so a read-modify-write
+  cannot re-spawn a series.
+- **`workspaces:limits`** — plan entitlement and remaining usage in one live
+  (uncached) call, worth running before a batch. Every entry now carries
+  `scope` (`account` figures are shared across every workspace on the account,
+  `workspace` ones are not), `is_unlimited` / `is_on_plan` (a null `limit`
+  alone cannot tell "unlimited" from "not on this plan"), `unit`, `period` and
+  `resets_at`. The body no longer carries `rate_limit` (now the
+  `X-RateLimit-*` response headers) or `cache`.
+- SKILL.md documents the 400-on-`posts:*` / 422-everywhere-else quirk: branch on
+  `error.response.error_code`, not on the status code.
+- SKILL.md now instructs agents to ASK which "share link" a user means —
+  planner (posts, for client comment/approval) or analytics (a live dashboard)
+  — instead of guessing between the two identically-named features.
+
+### AI Video support
 
 8 new commands under the `ai-video:` namespace, wrapping the ContentStudio
 public API v1 AI video endpoints.

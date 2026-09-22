@@ -4,6 +4,7 @@ import {
   Client,
   createWorkspace,
   deleteWorkspace,
+  getWorkspaceLimits,
   listWorkspaces,
   updateWorkspace,
 } from "../api";
@@ -192,7 +193,98 @@ export function registerWorkspaces<T>(yargs: Argv<T>): Argv<T> {
         const data = await deleteWorkspace(client, wid);
         out.emitSuccess(data, g, () => out.success(`Deleted workspace ${wid}.`));
       }),
+    )
+    .command(
+      "workspaces:limits",
+      "Show the workspace's plan entitlement and what is left of it. Built live on every request — call it once before a batch rather than discovering a ceiling mid-run.",
+      (y) => y,
+      run(async (argv: any, g) => {
+        const { cfg, client } = buildClient(g);
+        const wid = resolveWorkspace(cfg, g);
+        const data: any = await getWorkspaceLimits(client, wid);
+        out.emitSuccess(data, g, (d: any) => {
+          out.status(
+            "Plan",
+            `${d?.plan?.name ?? "-"} (${d?.plan?.slug ?? "-"}${d?.plan?.is_annually ? ", annual" : ""})`,
+          );
+          const rows = (d?.limits as any[]) ?? [];
+          out.table(
+            ["Key", "Label", "Scope", "Used", "Limit", "Remaining", "Resets"],
+            rows.map((l) => [
+              String(l.key ?? "-"),
+              String(l.label ?? "-"),
+              String(l.scope ?? "-"),
+              formatAmount(l.used, l.unit),
+              formatCeiling(l, l.limit),
+              formatCeiling(l, l.remaining),
+              formatResets(l),
+            ]),
+          );
+          if (rows.some((l) => l.scope === "account")) {
+            out.info(
+              "`account` figures are shared across every workspace on the account — `remaining` there is what is left in total, not per workspace.",
+            );
+          }
+          if (rows.some((l) => l.is_on_plan === false)) {
+            out.warning(
+              "Entries marked `not on plan` are not carried by this plan at all — they are not unlimited.",
+            );
+          }
+          if (d?.usage_reset?.next_reset_at) {
+            out.status("Usage resets", String(d.usage_reset.next_reset_at));
+          }
+          if (d?.usage_reset?.last_reset_at) {
+            out.status("Last reset", String(d.usage_reset.last_reset_at));
+          }
+        });
+      }),
     );
+}
+
+/**
+ * `limit`/`remaining` are null for BOTH "unlimited" and "not carried by this
+ * plan" — the two booleans beside them are the only way to tell those apart,
+ * so render from the booleans and never print a bare `null` as zero.
+ */
+function formatCeiling(entry: any, value: unknown): string {
+  if (entry?.is_on_plan === false) {
+    return "not on plan";
+  }
+  if (entry?.is_unlimited) {
+    return "∞";
+  }
+  return formatAmount(value, entry?.unit);
+}
+
+/**
+ * `bytes` amounts are **binary** (1024-based), not decimal. The backend sizes
+ * storage addons with `$user->addons[$key] * 1073741824` (1024³) in
+ * `SubscriptionLimits.php`, so the ceiling really is GiB — do NOT "fix" this
+ * to 1000-based units.
+ */
+function formatAmount(value: unknown, unit: unknown): string {
+  if (value === null || value === undefined) {
+    return "-";
+  }
+  const n = Number(value);
+  if (unit !== "bytes" || !Number.isFinite(n)) {
+    return String(value);
+  }
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let scaled = n;
+  let i = 0;
+  while (Math.abs(scaled) >= 1024 && i < units.length - 1) {
+    scaled /= 1024;
+    i += 1;
+  }
+  return `${i === 0 ? scaled : scaled.toFixed(1)} ${units[i]}`;
+}
+
+function formatResets(entry: any): string {
+  if (entry?.period === "lifetime") {
+    return "lifetime";
+  }
+  return entry?.resets_at ? String(entry.resets_at) : String(entry?.period ?? "-");
 }
 
 function buildWorkspaceBody(argv: any, isCreate: boolean): Record<string, unknown> {

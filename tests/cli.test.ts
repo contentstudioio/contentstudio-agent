@@ -986,3 +986,113 @@ describe("images commands", () => {
     expect(JSON.parse(r.stdout).error.type).toBe("ConfigError");
   });
 });
+
+/**
+ * Repeat is gated to `--publish-type scheduled` — deliberately narrower than
+ * the backend, which also accepts repeat on `now`. `now` is not a publish type
+ * this CLI offers (it was removed from the apps by product decision), so
+ * `scheduled` is the only type a caller can pair repeat with here.
+ *
+ * These assert against the built payload rather than the `src/api.ts` wrapper
+ * on purpose: the wrapper takes an opaque body and never knew about publish
+ * types, so a test at that layer would pass whether the gate existed or not.
+ */
+describe("posts:create repeat is gated to --publish-type scheduled", () => {
+  function withCfg() {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({ api_key: "cs_INVALID", active_workspace_id: "ws-bogus" }),
+    );
+    return { CONTENTSTUDIO_CONFIG_PATH: cfgFile };
+  }
+
+  const REPEAT_FLAGS = [
+    "--repeat-type",
+    "Week",
+    "--repeat-times",
+    "4",
+    "--repeat-gap",
+    "1",
+  ];
+
+  function createWith(extra: string[]) {
+    return run(
+      ["--json", "posts:create", "--dry-run", "-c", "hi", "-i", "acct-x", ...extra],
+      withCfg(),
+    );
+  }
+
+  it("does not offer `now` as a publish type", () => {
+    const r = createWith(["-t", "now"]);
+    expect(r.code).not.toBe(0);
+    // yargs rejects it against the choices list before any handler runs.
+    expect(`${r.stdout}${r.stderr}`).not.toContain('"publish_type": "now"');
+  });
+
+  it("rejects repeat on -t draft, naming the offending publish type", () => {
+    const r = createWith(["-t", "draft", "-s", "2026-10-01 09:00:00", ...REPEAT_FLAGS]);
+    expect(r.code).not.toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(false);
+    expect(data.error.type).toBe("ConfigError");
+    expect(data.error.message).toContain("scheduled");
+    expect(data.error.message).toContain("draft");
+  });
+
+  // A second non-scheduled type, so the gate cannot pass by special-casing
+  // `draft` alone.
+  it("rejects repeat on -t queued too", () => {
+    const r = createWith(["-t", "queued", ...REPEAT_FLAGS]);
+    expect(r.code).not.toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.error.type).toBe("ConfigError");
+    expect(data.error.message).toContain("queued");
+  });
+
+  it("rejects repeat on -t content_category too", () => {
+    const r = createWith([
+      "-t",
+      "content_category",
+      "--content-category-id",
+      "cat-1",
+      ...REPEAT_FLAGS,
+    ]);
+    expect(r.code).not.toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.error.type).toBe("ConfigError");
+    expect(data.error.message).toContain("content_category");
+  });
+
+  // The case that catches an over-tightened gate: scheduled must still work.
+  it("emits scheduling.repeat on -t scheduled", () => {
+    const r = createWith([
+      "-t",
+      "scheduled",
+      "-s",
+      "2026-10-01 09:00:00",
+      ...REPEAT_FLAGS,
+    ]);
+    expect(r.code).toBe(0);
+    const data = JSON.parse(r.stdout);
+    expect(data.ok).toBe(true);
+    expect(data.data.body.scheduling.repeat).toEqual({
+      // `enabled` is required by the backend whenever `repeat` is present.
+      enabled: true,
+      type: "Week",
+      // Integers, not the strings yargs saw on the command line.
+      times: 4,
+      gap: 1,
+    });
+  });
+
+  // The round-trip safety property: no repeat flags means no repeat key, so a
+  // read-modify-write of a repeating post cannot re-spawn the series.
+  it("omits scheduling.repeat entirely when no repeat flags are passed", () => {
+    const r = createWith(["-t", "scheduled", "-s", "2026-10-01 09:00:00"]);
+    expect(r.code).toBe(0);
+    const scheduling = JSON.parse(r.stdout).data.body.scheduling;
+    // Absent — not `enabled: false`, which the backend would read as a request.
+    expect("repeat" in scheduling).toBe(false);
+    expect(scheduling.publish_type).toBe("scheduled");
+  });
+});

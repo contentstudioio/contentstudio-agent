@@ -3722,5 +3722,466 @@ export function getCompetitorComparison(
   );
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Content categories — CRUD, shuffle, and weekly posting slots
+// (`listContentCategories` for the list lives with the lookups above.)
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * GET /workspaces/{w}/content-categories/{category_id}
+ *
+ * The category comes back with its `slots[]` inlined, so there is no need to
+ * follow up with the slots list for a single category.
+ */
+export function getContentCategory(
+  c: Client,
+  workspaceId: string,
+  categoryId: string,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/content-categories/${categoryId}`);
+}
+
+/**
+ * POST /workspaces/{w}/content-categories
+ *
+ * `name` (≤100) and `color` (color_1 … color_20) are required.
+ * `accounts` is one FLAT list of social account ids mixed across platforms —
+ * the same shape the GET response returns — not a per-platform map.
+ */
+export function createContentCategory(
+  c: Client,
+  workspaceId: string,
+  body: {
+    name: string;
+    color: string;
+    allowed_member_ids?: string[];
+    accounts?: string[];
+  },
+) {
+  return c.post<any>(`/workspaces/${workspaceId}/content-categories`, {
+    json: body,
+  });
+}
+
+/** PUT /workspaces/{w}/content-categories/{category_id} — partial update. */
+export function updateContentCategory(
+  c: Client,
+  workspaceId: string,
+  categoryId: string,
+  body: {
+    name?: string;
+    color?: string;
+    allowed_member_ids?: string[];
+    accounts?: string[];
+  },
+) {
+  return c.put<any>(
+    `/workspaces/${workspaceId}/content-categories/${categoryId}`,
+    { json: body },
+  );
+}
+
+/** DELETE /workspaces/{w}/content-categories/{category_id} */
+export function deleteContentCategory(
+  c: Client,
+  workspaceId: string,
+  categoryId: string,
+) {
+  return c.delete<any>(
+    `/workspaces/${workspaceId}/content-categories/${categoryId}`,
+  );
+}
+
+/**
+ * POST /workspaces/{w}/content-categories/{category_id}/shuffle
+ *
+ * Re-deals the category's upcoming posts across its slots. Answers
+ * `{ shuffled_posts_count }`; a category with nothing upcoming shuffles zero
+ * posts and that is a success, not an error.
+ */
+export function shuffleContentCategory(
+  c: Client,
+  workspaceId: string,
+  categoryId: string,
+) {
+  return c.post<any>(
+    `/workspaces/${workspaceId}/content-categories/${categoryId}/shuffle`,
+  );
+}
+
+/**
+ * GET /workspaces/{w}/content-categories/{category_id}/slots
+ *
+ * Each slot carries `weekday_sorting` (Sunday = 0) — the index the scheduler
+ * orders by, so a client need not re-derive day order from the name.
+ */
+export function listContentCategorySlots(
+  c: Client,
+  workspaceId: string,
+  categoryId: string,
+) {
+  return c.get<any>(
+    `/workspaces/${workspaceId}/content-categories/${categoryId}/slots`,
+  );
+}
+
+/**
+ * GET /workspaces/{w}/content-categories/{category_id}/slots/next
+ *
+ * Answers `{ next_slot, timezone, scheduled }`. `next_slot: null` is a 200 —
+ * the category simply has no upcoming slot, not a failure. Pass `post_id` to
+ * ask for the slot that post would take (the backend calls it `plan_id`
+ * internally; the public field is `post_id`).
+ */
+export function nextContentCategorySlot(
+  c: Client,
+  workspaceId: string,
+  categoryId: string,
+  params: { post_id?: string } = {},
+) {
+  return c.get<any>(
+    `/workspaces/${workspaceId}/content-categories/${categoryId}/slots/next`,
+    params,
+  );
+}
+
+/**
+ * POST /workspaces/{w}/content-categories/{category_id}/slots
+ *
+ * `hour`/`minute` must be sent as JSON **integers**, not strings: the backend
+ * normalises noon with a strict `hour === 12` comparison, and a string "12"
+ * slips past it and persists an hour the scheduler cannot match.
+ */
+export function createContentCategorySlot(
+  c: Client,
+  workspaceId: string,
+  categoryId: string,
+  body: { day: string; hour: number; minute: number; period: "AM" | "PM" },
+) {
+  return c.post<any>(
+    `/workspaces/${workspaceId}/content-categories/${categoryId}/slots`,
+    { json: body },
+  );
+}
+
+/** PUT /workspaces/{w}/content-categories/{category_id}/slots/{slot_id} — partial. */
+export function updateContentCategorySlot(
+  c: Client,
+  workspaceId: string,
+  categoryId: string,
+  slotId: string,
+  body: { day?: string; hour?: number; minute?: number; period?: "AM" | "PM" },
+) {
+  return c.put<any>(
+    `/workspaces/${workspaceId}/content-categories/${categoryId}/slots/${slotId}`,
+    { json: body },
+  );
+}
+
+/** DELETE /workspaces/{w}/content-categories/{category_id}/slots/{slot_id} */
+export function deleteContentCategorySlot(
+  c: Client,
+  workspaceId: string,
+  categoryId: string,
+  slotId: string,
+) {
+  return c.delete<any>(
+    `/workspaces/${workspaceId}/content-categories/${categoryId}/slots/${slotId}`,
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Approval workflows — CRUD, duplicate, default, cascade polling
+// (`listApprovalWorkflows` for the list lives with the lookups above.)
+// Every route below needs the `manage_workflow` permission — the list too.
+// ─────────────────────────────────────────────────────────────────
+
+/** GET /workspaces/{w}/approval-workflows/{workflow_id} */
+export function getApprovalWorkflow(
+  c: Client,
+  workspaceId: string,
+  workflowId: string,
+) {
+  return c.get<any>(
+    `/workspaces/${workspaceId}/approval-workflows/${workflowId}`,
+  );
+}
+
+/**
+ * POST /workspaces/{w}/approval-workflows
+ *
+ * `levels[]` is required; each level is
+ * `{ level_number, title?, rule: "everyone"|"anyone", members: [{ user_id }] }`.
+ * `is_default` is NOT accepted here — promote with setDefaultApprovalWorkflow.
+ */
+export function createApprovalWorkflow(
+  c: Client,
+  workspaceId: string,
+  body: { name: string; levels: unknown[]; is_draft?: boolean },
+) {
+  return c.post<any>(`/workspaces/${workspaceId}/approval-workflows`, {
+    json: body,
+  });
+}
+
+/**
+ * PUT /workspaces/{w}/approval-workflows/{workflow_id} — partial update.
+ *
+ * `confirmed: true` re-applies the edited workflow to posts already in flight
+ * against it. That answers **202** with a flat
+ * `{ status, message, cascade_job_id }` (no `data` key, so the wrapper returns
+ * the whole envelope) — poll it with getApprovalCascadeJob.
+ */
+export function updateApprovalWorkflow(
+  c: Client,
+  workspaceId: string,
+  workflowId: string,
+  body: {
+    name?: string;
+    levels?: unknown[];
+    is_draft?: boolean;
+    confirmed?: boolean;
+  },
+) {
+  return c.put<any>(
+    `/workspaces/${workspaceId}/approval-workflows/${workflowId}`,
+    { json: body },
+  );
+}
+
+/**
+ * DELETE /workspaces/{w}/approval-workflows/{workflow_id}
+ *
+ * With posts in flight the backend refuses with 422 `REQUIRES_FORCE_DELETE`
+ * and the affected count; re-run with `force: true` (sent as `?force=true`) to
+ * delete anyway — that answers 202 with `{ cascade_job_id, was_default }`.
+ */
+export function deleteApprovalWorkflow(
+  c: Client,
+  workspaceId: string,
+  workflowId: string,
+  opts: { force?: boolean } = {},
+) {
+  const params: Record<string, unknown> = {};
+  if (opts.force) params.force = "true";
+  return c.request<any>(
+    "DELETE",
+    `/workspaces/${workspaceId}/approval-workflows/${workflowId}`,
+    { params },
+  );
+}
+
+/** POST /workspaces/{w}/approval-workflows/{workflow_id}/duplicate */
+export function duplicateApprovalWorkflow(
+  c: Client,
+  workspaceId: string,
+  workflowId: string,
+) {
+  return c.post<any>(
+    `/workspaces/${workspaceId}/approval-workflows/${workflowId}/duplicate`,
+  );
+}
+
+/**
+ * PUT /workspaces/{w}/approval-workflows/{workflow_id}/set-default
+ *
+ * A draft workflow cannot be the default — the backend answers 422
+ * `CANNOT_SET_DRAFT_AS_DEFAULT`.
+ */
+export function setDefaultApprovalWorkflow(
+  c: Client,
+  workspaceId: string,
+  workflowId: string,
+) {
+  return c.put<any>(
+    `/workspaces/${workspaceId}/approval-workflows/${workflowId}/set-default`,
+  );
+}
+
+/** PUT /workspaces/{w}/approval-workflows/{workflow_id}/remove-default */
+export function removeDefaultApprovalWorkflow(
+  c: Client,
+  workspaceId: string,
+  workflowId: string,
+) {
+  return c.put<any>(
+    `/workspaces/${workspaceId}/approval-workflows/${workflowId}/remove-default`,
+  );
+}
+
+/**
+ * GET /workspaces/{w}/approval-workflows/cascade-jobs/{cascade_job_id}
+ *
+ * Poll a background cascade started by a confirmed update or a forced delete.
+ * Returns `{ id, type, status, total_count, processed_count, failed_count,
+ * failures[], started_at, completed_at }`.
+ */
+export function getApprovalCascadeJob(
+  c: Client,
+  workspaceId: string,
+  cascadeJobId: string,
+) {
+  return c.get<any>(
+    `/workspaces/${workspaceId}/approval-workflows/cascade-jobs/${cascadeJobId}`,
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Planner share links — public view/approval links over planner posts.
+// Distinct from the ANALYTICS share links above
+// (`/analytics/share-links`), which share a live analytics dashboard.
+// ─────────────────────────────────────────────────────────────────
+
+/** GET /workspaces/{w}/share-links — paginated. */
+export function listPlannerShareLinks(
+  c: Client,
+  workspaceId: string,
+  params: { page?: number; per_page?: number } = {},
+) {
+  return c.getPaginated<any>(`/workspaces/${workspaceId}/share-links`, params);
+}
+
+/**
+ * GET /workspaces/{w}/share-links/{link_id}
+ *
+ * `{link_id}` here — and on every other route in this group — is the RECORD id
+ * (the resource's `id`), not the public `link_id` slug that appears in the
+ * shareable URL. The resource returns both.
+ */
+export function getPlannerShareLink(
+  c: Client,
+  workspaceId: string,
+  linkId: string,
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/share-links/${linkId}`);
+}
+
+/**
+ * POST /workspaces/{w}/share-links
+ *
+ * `name` is 3–255 letters, digits and spaces only — punctuation is refused,
+ * because the name is slugified straight into the public URL.
+ * Exactly one of `plans[]` / `notes[]` must be non-empty on EVERY create.
+ * `calendar_date` is required for scope future/all and refused otherwise;
+ * those two scopes are calendar-only and cannot collect external approvals.
+ */
+export function createPlannerShareLink(
+  c: Client,
+  workspaceId: string,
+  body: Record<string, unknown>,
+) {
+  return c.post<any>(`/workspaces/${workspaceId}/share-links`, { json: body });
+}
+
+/**
+ * PUT /workspaces/{w}/share-links/{link_id} — partial update.
+ *
+ * Adds `is_disabled` / `approval_flow` / `approval_emails` / `approval_option`
+ * over create, and deliberately does NOT accept `plans` or `filters`.
+ */
+export function updatePlannerShareLink(
+  c: Client,
+  workspaceId: string,
+  linkId: string,
+  body: Record<string, unknown>,
+) {
+  return c.put<any>(`/workspaces/${workspaceId}/share-links/${linkId}`, {
+    json: body,
+  });
+}
+
+/** DELETE /workspaces/{w}/share-links/{link_id} */
+export function deletePlannerShareLink(
+  c: Client,
+  workspaceId: string,
+  linkId: string,
+) {
+  return c.delete<any>(`/workspaces/${workspaceId}/share-links/${linkId}`);
+}
+
+/**
+ * POST /workspaces/{w}/share-links/{link_id}/send-invitations
+ *
+ * Turns the approval flow on and emails 1–10 addresses.
+ */
+export function sendPlannerShareLinkInvitations(
+  c: Client,
+  workspaceId: string,
+  linkId: string,
+  body: { approval_emails: string[]; approval_option: "anyone" | "everyone" },
+) {
+  return c.post<any>(
+    `/workspaces/${workspaceId}/share-links/${linkId}/send-invitations`,
+    { json: body },
+  );
+}
+
+/**
+ * GET /workspaces/{w}/share-links/{link_id}/activity
+ *
+ * What clients did on the other side of the link, newest-first. The response
+ * is flat (`{status, message, total, data}`), so this reads the raw envelope
+ * and returns `{ total, data }` — unwrapping would drop `total`.
+ */
+export async function getPlannerShareLinkActivity(
+  c: Client,
+  workspaceId: string,
+  linkId: string,
+  params: { type?: "comment" | "action" } = {},
+): Promise<{ total: number; data: any[] }> {
+  const body = await c.request<any>(
+    "GET",
+    `/workspaces/${workspaceId}/share-links/${linkId}/activity`,
+    { params, unwrap: false },
+  );
+  return {
+    total: Number(body?.total ?? 0),
+    data: Array.isArray(body?.data) ? body.data : [],
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Single post read + workspace plan limits
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * GET /workspaces/{w}/posts/{post_id}
+ *
+ * The payload is byte-identical to the matching item in `listPosts`. A deleted
+ * post, one in another workspace, and a malformed id all answer 404.
+ */
+export function getPost(c: Client, workspaceId: string, postId: string) {
+  return c.get<any>(`/workspaces/${workspaceId}/posts/${postId}`);
+}
+
+/**
+ * GET /workspaces/{w}/limits
+ *
+ * The workspace's plan entitlement and what is left of it — worth a single
+ * call before a batch rather than discovering a ceiling mid-run. Built live on
+ * every request (never cached), so it already reflects the caller's own writes.
+ *
+ * Returns `{ plan, limits[], usage_reset }`. Each of the 14 limit entries is
+ * `{ key, label, used, limit, remaining, scope, is_unlimited, is_on_plan,
+ * unit, period, resets_at, note }`:
+ *
+ * - `scope` — `"account"` (the figure is shared across every workspace on the
+ *   account: `workspaces`, `social_accounts`, `team_members`,
+ *   `listening_topics`, `automations`, `media_storage`) or `"workspace"` (the
+ *   eight credit counters, this workspace only).
+ * - `is_unlimited` vs `is_on_plan` — `limit: null` alone cannot tell
+ *   "unlimited" from "the plan does not carry it"; these two can.
+ * - `unit` is `"count"` or `"bytes"` (`bytes` only for `media_storage`);
+ *   `period` is `"monthly"` or `"lifetime"`, and `resets_at` is an ISO 8601
+ *   string, or null when `period` is `lifetime`.
+ *
+ * `usage_reset.last_reset_at` / `next_reset_at` are ISO 8601 with offset.
+ * There is no `rate_limit` or `cache` block — the rate ceiling is published on
+ * the `X-RateLimit-Limit` / `X-RateLimit-Remaining` response headers instead.
+ */
+export function getWorkspaceLimits(c: Client, workspaceId: string) {
+  return c.get<any>(`/workspaces/${workspaceId}/limits`);
+}
+
 // Re-export ContentStudioError for convenience in commands.
 export { ContentStudioError };
