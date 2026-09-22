@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased — Facebook Page Insights deprecation
+
+Meta removed several Page Insights metrics on 2025-11-15 with no replacement,
+so the endpoints built on them are gone rather than answering with zeros.
+See https://developers.facebook.com/docs/platforminsights/page/deprecated-metrics
+
+Removed (3 commands):
+
+- `analytics:facebook-active-users` — `page_fans_online` no longer exists in the
+  Page Insights API at all.
+- `analytics:facebook-demographics` and
+  `analytics:facebook-demographics-overview` — `page_fans_gender_age` was
+  removed with no replacement, and location moved to `audience-location`.
+
+Changed:
+
+- `analytics:facebook-audience-location` now returns country and city only, and
+  accepts `--country` (ISO 3166-1 alpha-2) to narrow the city list.
+  `available_countries` in the response lists the codes on offer. It reads the
+  renamed `page_follows_country` / `page_follows_city` metrics.
+- `analytics:instagram-country-city` accepts the same `--country` filter, with
+  the country per city derived from the city label.
+
+Note: both platforms cap these breakdowns at the top 45 entries, so per-country
+city counts do not sum to that country's follower total.
+
 ## Unreleased — AI Video support
 
 8 new commands under the `ai-video:` namespace, wrapping the ContentStudio

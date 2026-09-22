@@ -697,16 +697,13 @@ it as "the analytics service is temporarily unavailable," don't retry the
 exact same call in a loop, and don't treat it as evidence the account/workspace
 is wrong.
 
-**Facebook (15)**
+**Facebook (12)**
 
 | Command | Purpose | Required |
 |---------|---------|----------|
-| `analytics:facebook-active-users` | Facebook active users by hour and day of week | --platform-id, --start-date, --end-date |
 | `analytics:facebook-ai-insights` | Facebook AI-generated insights | --platform-id, --start-date, --end-date |
 | `analytics:facebook-audience-growth` | Facebook fan / follower growth over time | --platform-id, --start-date, --end-date |
-| `analytics:facebook-audience-location` | Facebook audience location (country/city breakdown) | --platform-id, --start-date, --end-date |
-| `analytics:facebook-demographics` | Facebook audience age / gender / country / city demographics | --platform-id, --start-date, --end-date |
-| `analytics:facebook-demographics-overview` | Facebook demographics overview widget | --platform-id, --start-date, --end-date |
+| `analytics:facebook-audience-location` | Facebook audience location (country/city breakdown); `--country` narrows the city list | --platform-id, --start-date, --end-date |
 | `analytics:facebook-engagement` | Facebook page engagements over time | --platform-id, --start-date, --end-date |
 | `analytics:facebook-get-top-posts` | Facebook top posts with media_type filter | --platform-id, --start-date, --end-date |
 | `analytics:facebook-impressions` | Facebook page impressions over time | --platform-id, --start-date, --end-date |
@@ -724,7 +721,7 @@ is wrong.
 | `analytics:instagram-active-users` | Instagram active users by hour and day of week | --platform-id, --start-date, --end-date |
 | `analytics:instagram-ai-insights` | Instagram AI-generated insights | --platform-id, --start-date, --end-date |
 | `analytics:instagram-audience-growth` | Instagram follower growth over time | --platform-id, --start-date, --end-date |
-| `analytics:instagram-country-city` | Instagram audience country / city breakdown | --platform-id, --start-date, --end-date |
+| `analytics:instagram-country-city` | Instagram audience country / city breakdown; `--country` narrows the city list | --platform-id, --start-date, --end-date |
 | `analytics:instagram-demographics-age` | Instagram audience age / gender breakdown | --platform-id, --start-date, --end-date |
 | `analytics:instagram-engagement` | Instagram post engagement over time | --platform-id, --start-date, --end-date |
 | `analytics:instagram-get-top-posts` | Instagram top posts with hashtag filter | --platform-id, --start-date, --end-date |
