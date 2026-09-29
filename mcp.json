@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "contentstudio": {
+      "type": "http",
+      "url": "https://mcp.contentstudio.io/mcp"
+    }
+  }
+}
