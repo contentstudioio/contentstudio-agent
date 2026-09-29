@@ -6,6 +6,12 @@ homepage: https://api.contentstudio.io/guide
 metadata: {"openclaw":{"emoji":"📅","requires":{"bins":["contentstudio"],"env":["CONTENTSTUDIO_API_KEY"]}}}
 ---
 
+## Hosted MCP server (Cursor, Grok Bot, Grok Build plugins)
+
+When this skill is installed as a plugin, it also connects the hosted ContentStudio MCP server at `https://mcp.contentstudio.io/mcp`. The user signs in with their ContentStudio account through OAuth on first use. No API key is needed.
+
+If ContentStudio MCP tools are available (for example `fetch_workspaces`, `fetch_posts`, `create_post`), use them first. Use the CLI below only when the MCP tools are not connected, or for a task the MCP tools don't cover. Before any tool that publishes, deletes, or approves a post, show the user what will happen and wait for them to confirm.
+
 ## Install ContentStudio CLI if it doesn't exist
 
 ```bash
