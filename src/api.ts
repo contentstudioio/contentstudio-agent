@@ -1377,6 +1377,9 @@ export interface AnalyticsParams {
   topic_type?: string[];
   board_id?: string;
   language?: string;
+  /** ISO 3166-1 alpha-2 filter for the Facebook / Instagram audience-location
+   *  city list. Omit for every city. */
+  country?: string;
 }
 
 function analyticsQuery(p: AnalyticsParams): Record<string, unknown> {
@@ -1399,19 +1402,12 @@ function analyticsQuery(p: AnalyticsParams): Record<string, unknown> {
     "topic_type[]": p.topic_type,
     board_id: p.board_id,
     language: p.language,
+    country: p.country,
   };
 }
 
 // ── facebook ──────────────────────────────────────────────
 
-/** Facebook active users by hour and day of week */
-export function facebookAnalyticsActiveUsers(
-  c: Client,
-  workspaceId: string,
-  params: AnalyticsParams,
-) {
-  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/active-users`, analyticsQuery(params));
-}
 
 /** Facebook AI-generated insights */
 export function facebookAnalyticsAiInsights(
@@ -1431,7 +1427,10 @@ export function facebookAnalyticsAudienceGrowth(
   return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/audience-growth`, analyticsQuery(params));
 }
 
-/** Facebook audience location (country/city breakdown) */
+/** Facebook audience location (country/city breakdown).
+ *  Pass `country` to narrow `audience_city` to one country; `available_countries`
+ *  in the response lists the codes on offer. Age and gender are no longer
+ *  available — Meta removed page_fans_gender_age on 2025-11-15. */
 export function facebookAnalyticsAudienceLocation(
   c: Client,
   workspaceId: string,
@@ -1440,23 +1439,7 @@ export function facebookAnalyticsAudienceLocation(
   return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/audience-location`, analyticsQuery(params));
 }
 
-/** Facebook audience age / gender / country / city demographics */
-export function facebookAnalyticsDemographics(
-  c: Client,
-  workspaceId: string,
-  params: AnalyticsParams,
-) {
-  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/demographics`, analyticsQuery(params));
-}
 
-/** Facebook demographics overview widget */
-export function facebookAnalyticsDemographicsOverview(
-  c: Client,
-  workspaceId: string,
-  params: AnalyticsParams,
-) {
-  return c.get<any>(`/workspaces/${workspaceId}/analytics/facebook/overview-demographics`, analyticsQuery(params));
-}
 
 /** Facebook page engagements over time */
 export function facebookAnalyticsEngagement(
@@ -1660,7 +1643,9 @@ export function instagramAnalyticsAudienceGrowth(
   return c.get<any>(`/workspaces/${workspaceId}/analytics/instagram/audience-growth`, analyticsQuery(params));
 }
 
-/** Instagram audience country / city breakdown */
+/** Instagram audience country / city breakdown.
+ *  Pass `country` to narrow `audience_city` to one country; `available_countries`
+ *  in the response lists the codes on offer. */
 export function instagramAnalyticsCountryCity(
   c: Client,
   workspaceId: string,
