@@ -18,6 +18,7 @@
 import type { Argv } from "yargs";
 
 import {
+  IMAGE_BACKGROUNDS,
   IMAGE_DIMENSIONS,
   IMAGE_TIMEOUT_MS,
   MAX_IMAGE_PROMPT,
@@ -314,9 +315,21 @@ export function registerImages<T>(yargs: Argv<T>): Argv<T> {
         const wid = resolveWorkspace(cfg, g);
         const models = await listImageModels(client, wid);
         out.emitSuccess(models, g, () => {
-          out.table(["Model"], models.map((m) => [m]));
+          out.table(
+            ["Model", "Credits/image", "Backgrounds"],
+            models.map((m) =>
+              typeof m === "string"
+                ? [m, "-", "-"]
+                : [
+                    m.key,
+                    m.credits_per_image !== undefined ? String(m.credits_per_image) : "-",
+                    m.supported_backgrounds?.length ? m.supported_backgrounds.join(", ") : "-",
+                  ],
+            ),
+          );
           out.info(
-            "Omit --model to use the service default. Costs differ per model — read `credits.consumed` on the result.",
+            "Omit --model to use the service default. Costs differ per model — read `credits.consumed` on the result. " +
+              "Every listed model generates and edits (--image-url).",
           );
         });
       }),
@@ -367,6 +380,12 @@ export function registerImages<T>(yargs: Argv<T>): Argv<T> {
               choices: [...IMAGE_DIMENSIONS],
               describe: "Output shape (text→image only). Exact pixels are the model's choice.",
             })
+            .option("background", {
+              type: "string",
+              choices: [...IMAGE_BACKGROUNDS],
+              describe:
+                "Image background: auto, opaque or transparent. Honored only by models that support it (gpt-image-2.5-flare, gpt-image-2.5-sunburst); other models ignore it.",
+            })
             .option("use-brand", {
               type: "boolean",
               default: false,
@@ -389,6 +408,7 @@ export function registerImages<T>(yargs: Argv<T>): Argv<T> {
         if (imageUrl !== undefined) body.image_url = String(imageUrl);
         if (argv.model !== undefined) body.model = argv.model;
         if (argv.dimensions !== undefined) body.dimensions = argv.dimensions;
+        if (argv.background !== undefined) body.image_background = argv.background;
         if (argv["use-brand"] ?? argv.useBrand) body.use_brand = true;
         const enhance = argv["enhance-prompt"] ?? argv.enhancePrompt;
         if (enhance !== undefined) body.enhance_prompt = !!enhance;

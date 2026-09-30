@@ -977,6 +977,44 @@ describe("images commands", () => {
     expect(r.stderr).toContain("square_hd");
   });
 
+  it("images:generate --background maps to image_background in the body", () => {
+    const r = run(
+      [
+        "--json",
+        "images:generate",
+        "-p",
+        "logo on a plain field",
+        "--model",
+        "gpt-image-2.5-flare",
+        "--background",
+        "transparent",
+        "--dry-run",
+      ],
+      withCfg(),
+    );
+    expect(r.code).toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.data.body).toEqual({
+      prompt: "logo on a plain field",
+      model: "gpt-image-2.5-flare",
+      image_background: "transparent",
+    });
+  });
+
+  it("images:generate omits image_background unless --background is given", () => {
+    const r = run(["--json", "images:generate", "-p", "x", "--dry-run"], withCfg());
+    expect(JSON.parse(r.stdout).data.body).not.toHaveProperty("image_background");
+  });
+
+  it("rejects a --background value the API does not accept", () => {
+    const r = run(
+      ["--json", "images:generate", "-p", "x", "--background", "glass", "--dry-run"],
+      withCfg(),
+    );
+    expect(r.code).not.toBe(0);
+    expect(r.stderr).toContain("transparent");
+  });
+
   it("rejects a non-positive --timeout", () => {
     const r = run(
       ["--json", "images:generate", "-p", "x", "--timeout", "0", "--dry-run"],
