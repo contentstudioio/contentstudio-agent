@@ -886,6 +886,9 @@ contentstudio --json images:generate \
 # Pick a model, and let the service refine the prompt (its default) or not
 contentstudio --json images:generate -p "..." --model nano-banana-pro --no-enhance-prompt
 
+# Transparent background (only gpt-image-2.5-flare and gpt-image-2.5-sunburst honor --background)
+contentstudio --json images:generate -p "Sticker of a coffee cup" --model gpt-image-2.5-flare --background transparent
+
 # Apply the workspace's brand knowledge (resolved server-side; no brand ID exists)
 contentstudio --json images:generate -p "..." --use-brand
 
@@ -896,6 +899,17 @@ contentstudio --json images:generate \
 ```
 
 `--dimensions` is one of `square`, `square_hd`, `portrait_4_5`, `landscape_16_9`, and applies to text→image only — an edit keeps the source image's geometry. Exact pixels are the model's choice; read `width`/`height` back off the response.
+
+`--background` is `auto`, `opaque` or `transparent` (sent as `image_background`). It is honored only by the models that support it, currently `gpt-image-2.5-flare` and `gpt-image-2.5-sunburst`; other models ignore it.
+
+**Models and cost per image.** `images:models` lists each model with its `credits_per_image` and supported backgrounds.
+
+| Model | Credits per image | Generate | Edit (`--image-url`) |
+|---|---|---|---|
+| most models (e.g. `nano-banana-pro`) | 1 | yes | yes |
+| `gpt-image-2` | 5 | yes | yes |
+| `gpt-image-2.5-flare` | 3 | yes | yes |
+| `gpt-image-2.5-sunburst` | 5 | yes | yes |
 
 ### Generate, then publish
 
@@ -966,7 +980,7 @@ contentstudio --json images:tool image-to-image --body '{
 
 - **`media_id` is the durable handle** — pass it to `posts:create --media-id`. `url` is for previews and for chaining one tool into the next; don't store it.
 - **Check `persist_error` before treating a success as done.** The image was generated *and charged* but could not be saved, so `media_id` is `null` and `url` is a temporary provider link. `media_storage_full` means the workspace is out of media storage and retrying will fail the same way; anything else is worth one retry.
-- **`model_used` names the model that actually ran and is not one of the `images:models` values** — it comes back provider-prefixed (`fal-ai/nano-banana-pro` for a generate, `pixelcut/background-removal` for a background removal). Don't compare it for equality with `--model`. Credit cost follows it (most 1, `gpt-image-2` 5), so read `credits.consumed` rather than assuming. `credits.available` is `null` when the balance could not be read — never `0` as a stand-in.
+- **`model_used` names the model that actually ran and is not one of the `images:models` values** — it comes back provider-prefixed (`fal-ai/nano-banana-pro` for a generate, `pixelcut/background-removal` for a background removal). Don't compare it for equality with `--model`. Credit cost follows it (most 1, `gpt-image-2` 5, `gpt-image-2.5-flare` 3, `gpt-image-2.5-sunburst` 5), so read `credits.consumed` rather than assuming. `credits.available` is `null` when the balance could not be read — never `0` as a stand-in.
 - **`brand_applied` is always `false` for the tool commands and for `images:generate --image-url`.** Tools and edits do not apply brand knowledge; only text→image `--use-brand` does.
 
 ### Input URLs

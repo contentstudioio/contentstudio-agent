@@ -1305,6 +1305,31 @@ describe("AI images", () => {
     ]);
   });
 
+  it("passes model capability objects through, including the GPT Image 2.5 models", async () => {
+    const models = [
+      { key: "gpt-image-2.5-flare", credits_per_image: 3, supported_backgrounds: ["auto", "opaque", "transparent"] },
+      { key: "gpt-image-2.5-sunburst", credits_per_image: 5, supported_backgrounds: ["auto", "opaque", "transparent"] },
+    ];
+    nock(BASE).get(`${W}/ai/images/models`).reply(200, envelope({ models }));
+    expect(await listImageModels(mkClient(), "ws-1")).toEqual(models);
+  });
+
+  it("sends image_background in the generate body", async () => {
+    let received: any;
+    nock(BASE)
+      .post(`${W}/ai/images/generate`, (b) => {
+        received = b;
+        return true;
+      })
+      .reply(200, envelope(result));
+    await generateImage(mkClient(), "ws-1", {
+      prompt: "x",
+      model: "gpt-image-2.5-sunburst",
+      image_background: "transparent",
+    });
+    expect(received).toEqual({ prompt: "x", model: "gpt-image-2.5-sunburst", image_background: "transparent" });
+  });
+
   it("treats an unreachable catalogue as an empty list, not a crash", async () => {
     nock(BASE).get(`${W}/ai/images/tools`).reply(200, envelope({}));
     expect(await listImageTools(mkClient(), "ws-1")).toEqual([]);
