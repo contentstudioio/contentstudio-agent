@@ -1,0 +1,23 @@
+name: Check plugin skill is in sync
+
+# The Cursor and Grok plugin manifests point at skills/contentstudio/SKILL.md.
+# It must be a real file (plugin marketplaces don't follow symlinks), so it is
+# a copy of the root SKILL.md. Fail if the two drift apart.
+# Fix: cp SKILL.md skills/contentstudio/SKILL.md
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare SKILL.md copies
+        run: |
+          if ! cmp -s SKILL.md skills/contentstudio/SKILL.md; then
+            echo "skills/contentstudio/SKILL.md is out of date. Run: cp SKILL.md skills/contentstudio/SKILL.md"
+            exit 1
+          fi

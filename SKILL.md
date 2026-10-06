@@ -6,6 +6,12 @@ homepage: https://api.contentstudio.io/guide
 metadata: {"openclaw":{"emoji":"📅","requires":{"bins":["contentstudio"],"env":["CONTENTSTUDIO_API_KEY"]}}}
 ---
 
+## Hosted MCP server (Cursor, Grok Bot, Grok Build plugins)
+
+When this skill is installed as a plugin, it also connects the hosted ContentStudio MCP server at `https://mcp.contentstudio.io/mcp`. The user signs in with their ContentStudio account through OAuth on first use. No API key is needed.
+
+If ContentStudio MCP tools are available (for example `fetch_workspaces`, `fetch_posts`, `create_post`), use them first. Use the CLI below only when the MCP tools are not connected, or for a task the MCP tools don't cover. Before any tool that publishes, deletes, or approves a post, show the user what will happen and wait for them to confirm.
+
 ## Install ContentStudio CLI if it doesn't exist
 
 ```bash
@@ -874,16 +880,13 @@ it as "the analytics service is temporarily unavailable," don't retry the
 exact same call in a loop, and don't treat it as evidence the account/workspace
 is wrong.
 
-**Facebook (15)**
+**Facebook (12)**
 
 | Command | Purpose | Required |
 |---------|---------|----------|
-| `analytics:facebook-active-users` | Facebook active users by hour and day of week | --platform-id, --start-date, --end-date |
 | `analytics:facebook-ai-insights` | Facebook AI-generated insights | --platform-id, --start-date, --end-date |
 | `analytics:facebook-audience-growth` | Facebook fan / follower growth over time | --platform-id, --start-date, --end-date |
-| `analytics:facebook-audience-location` | Facebook audience location (country/city breakdown) | --platform-id, --start-date, --end-date |
-| `analytics:facebook-demographics` | Facebook audience age / gender / country / city demographics | --platform-id, --start-date, --end-date |
-| `analytics:facebook-demographics-overview` | Facebook demographics overview widget | --platform-id, --start-date, --end-date |
+| `analytics:facebook-audience-location` | Facebook audience location (country/city breakdown); `--country` narrows the city list | --platform-id, --start-date, --end-date |
 | `analytics:facebook-engagement` | Facebook page engagements over time | --platform-id, --start-date, --end-date |
 | `analytics:facebook-get-top-posts` | Facebook top posts with media_type filter | --platform-id, --start-date, --end-date |
 | `analytics:facebook-impressions` | Facebook page impressions over time | --platform-id, --start-date, --end-date |
@@ -901,7 +904,7 @@ is wrong.
 | `analytics:instagram-active-users` | Instagram active users by hour and day of week | --platform-id, --start-date, --end-date |
 | `analytics:instagram-ai-insights` | Instagram AI-generated insights | --platform-id, --start-date, --end-date |
 | `analytics:instagram-audience-growth` | Instagram follower growth over time | --platform-id, --start-date, --end-date |
-| `analytics:instagram-country-city` | Instagram audience country / city breakdown | --platform-id, --start-date, --end-date |
+| `analytics:instagram-country-city` | Instagram audience country / city breakdown; `--country` narrows the city list | --platform-id, --start-date, --end-date |
 | `analytics:instagram-demographics-age` | Instagram audience age / gender breakdown | --platform-id, --start-date, --end-date |
 | `analytics:instagram-engagement` | Instagram post engagement over time | --platform-id, --start-date, --end-date |
 | `analytics:instagram-get-top-posts` | Instagram top posts with hashtag filter | --platform-id, --start-date, --end-date |
@@ -1320,7 +1323,9 @@ The top-level `-c / --content` is the lead tweet; each `--twitter` item is a fol
 
 **14. Full-control body via `--body <file.json>`** (any field the shortcut flags don't cover)
 
-Use `--body` when you need fields beyond the shortcut flags (per-platform `platform_overrides`, `twitter_options`/`threads_options`, `timezone`, `hide_client`, etc.). The JSON is sent verbatim, so build it for the platform(s) your `accounts` belong to — a Facebook-carousel body, a Threads body, and a Twitter body are separate posts, not one combined payload.
+Use `--body` when you need fields beyond the shortcut flags (per-platform `platform_overrides`, `twitter_options`/`threads_options`, `timezone`, `hide_client`, etc.). The JSON is sent as written apart from the id normalization below, so build it for the platform(s) your `accounts` belong to — a Facebook-carousel body, a Threads body, and a Twitter body are separate posts, not one combined payload.
+
+**Reference labels and campaigns by id, not by the object `labels:list` / `campaigns:list` returned.** The API takes `"labels": ["<label_id>"]` and `"campaign_id": "<campaign_id>"`, and the schedule time is `scheduling.scheduled_at`, not `execute_time`. The CLI rewrites the shapes it recognises (`{ "id": … }` / `{ "_id": … }`, a bare `campaign` key, `execute_time`) and refuses a label or campaign that carries no id at all, so a body written against the list output still goes through. Anything it cannot rewrite now comes back as a 400 validation error naming the field — `errors: { "labels.0": [...] }` — rather than the 500 `{"message": "Server Error"}` this used to return. Write the documented shape anyway: normalization is a safety net, not the contract.
 
 ```jsonc
 // /tmp/post.json — a Facebook carousel via the full body schema

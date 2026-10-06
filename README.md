@@ -45,6 +45,35 @@ npx skills add contentstudioio/contentstudio-agent
 
 Pick which agents to install into in the interactive prompt. The SKILL.md is dropped into each agent's skill directory (e.g. `~/.claude/skills/contentstudio/SKILL.md`).
 
+### Cursor and Grok Bot plugin
+
+This repo ships a [Cursor plugin](https://cursor.com/docs/reference/plugins) manifest at `.cursor-plugin/plugin.json`. Plugins listed in the Cursor marketplace are also available in Grok Bot.
+
+The plugin installs the `contentstudio` skill and the hosted ContentStudio MCP server (`https://mcp.contentstudio.io/mcp`, from `mcp.json`). On first use, you sign in to ContentStudio in your browser through OAuth. No API key or local install is needed for the MCP tools.
+
+- **Cursor:** open **Customize** in the sidebar, find **contentstudio**, and select **Install**.
+- **Grok Bot:** add **ContentStudio** from the Plugins marketplace.
+- **Local install (development):**
+
+  ```bash
+  git clone https://github.com/contentstudioio/contentstudio-agent.git
+  ln -s "$(pwd)/contentstudio-agent" ~/.cursor/plugins/local/contentstudio
+  ```
+
+  Then restart Cursor or run **Developer: Reload Window**.
+
+### Grok Build plugin
+
+This repo also has a `.grok-plugin/plugin.json` manifest with the same skill and hosted MCP server, for the [xAI plugin marketplace](https://github.com/xai-org/plugin-marketplace).
+
+### Endpoints and permissions
+
+- `https://mcp.contentstudio.io/mcp`: hosted MCP server (Streamable HTTP).
+- `https://api-prod.contentstudio.io/oauth/*`: OAuth 2.1 sign-in (PKCE, dynamic client registration). Scopes: `contentstudio:read`, `contentstudio:write`.
+- The plugin stores no API key. Some tools publish, delete, or approve posts, so review each write action before you approve it.
+
+> `skills/contentstudio/SKILL.md` is a copy of the root `SKILL.md` (plugin marketplaces don't follow symlinks). After editing `SKILL.md`, run `cp SKILL.md skills/contentstudio/SKILL.md`. CI checks this.
+
 ## Authentication
 
 Authentication uses an **API key** issued from your ContentStudio dashboard.
