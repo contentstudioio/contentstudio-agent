@@ -91,7 +91,7 @@ contentstudio workspaces:use <workspace_id>
 
 The CLI silently defaults to the active workspace (whatever was set by `workspaces:use`). That default is fine for **read-only** calls (`workspaces:list`, `accounts:list`, `posts:list`, `media:list`, etc.) — just use the active workspace.
 
-But for any **mutating** action — `accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `accounts:remove`, `posts:create`, `posts:update`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`, `workspaces:update`, `workspaces:delete`, `labels:create`, `labels:update`, `labels:delete`, `campaigns:create`, `campaigns:update`, `campaigns:delete`, `team:add`, `team:update`, `team:remove`, `categories:create`, `categories:update`, `categories:delete`, `categories:shuffle`, `category-slots:create`, `category-slots:update`, `category-slots:delete`, `approval-workflows:create`, `approval-workflows:update`, `approval-workflows:delete`, `approval-workflows:duplicate`, `approval-workflows:set-default`, `approval-workflows:remove-default`, `planner-share-links:create`, `planner-share-links:update`, `planner-share-links:delete`, `planner-share-links:send-invitations`, every `inbox:*` write (`inbox:send`, `inbox:comment-add`, `inbox:comment-delete`, `inbox:review-reply`, `inbox:update`, `inbox:tag-*`, …), and `ai-video:generate` / `ai-video:run-tool` / `ai-video:cancel-job` — you MUST confirm the workspace with the user first, even if a workspace is already active. Don't assume the active workspace is the one they want to mutate.
+But for any **mutating** action — `accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `accounts:remove`, `posts:create`, `posts:update`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`, `workspaces:update`, `workspaces:delete`, `labels:create`, `labels:update`, `labels:delete`, `campaigns:create`, `campaigns:update`, `campaigns:delete`, `team:add`, `team:update`, `team:remove`, `categories:create`, `categories:update`, `categories:delete`, `categories:shuffle`, `category-slots:create`, `category-slots:update`, `category-slots:delete`, `approval-workflows:create`, `approval-workflows:update`, `approval-workflows:delete`, `approval-workflows:duplicate`, `approval-workflows:set-default`, `approval-workflows:remove-default`, `planner-share-links:create`, `planner-share-links:update`, `planner-share-links:delete`, `planner-share-links:send-invitations`, `webhooks:create`, `webhooks:update`, `webhooks:enable`, `webhooks:disable`, `webhooks:delete`, `webhooks:rotate-secret`, every `inbox:*` write (`inbox:send`, `inbox:comment-add`, `inbox:comment-delete`, `inbox:review-reply`, `inbox:update`, `inbox:tag-*`, …), and `ai-video:generate` / `ai-video:run-tool` / `ai-video:cancel-job` — you MUST confirm the workspace with the user first, even if a workspace is already active. Don't assume the active workspace is the one they want to mutate.
 
 > **AI video generation costs credits.** `ai-video:generate` and `ai-video:run-tool` submit a real (billed) job the moment they're called without `--dry-run` — run `ai-video:estimate` first when the flags support it, show the estimate/cost to the user, and `--dry-run` the actual call before running it for real. `ai-video:cancel-job` may also charge for partial work already consumed — don't cancel a job on the user's behalf without confirming.
 
@@ -180,9 +180,9 @@ Did the user say "all" / "every" / "complete list" / "every single"?
 ### Endpoints that paginate
 
 All `*:list` commands paginate:
-`workspaces:list`, `accounts:list`, `posts:list`, `comments:list`, `media:list`, `campaigns:list`, `categories:list`, `labels:list`, `team:list`, `approval-workflows:list`, `planner-share-links:list`, `ai-video:jobs`.
+`workspaces:list`, `accounts:list`, `posts:list`, `comments:list`, `media:list`, `campaigns:list`, `categories:list`, `labels:list`, `team:list`, `approval-workflows:list`, `planner-share-links:list`, `webhooks:deliveries`, `ai-video:jobs`.
 
-`category-slots:list` and `planner-share-links:activity` return everything in one shot and carry no `pagination` block — a category has a handful of slots, and activity answers its own `total`.
+`category-slots:list` and `planner-share-links:activity` return everything in one shot and carry no `pagination` block — a category has a handful of slots, and activity answers its own `total`. `webhooks:list` is likewise unpaginated (a user has at most 5 webhooks) and answers `{used, limit, data[]}`.
 
 Non-list commands (`auth:whoami`, `posts:create`, `posts:delete`, `media:upload`, `ai-video:tools`, `ai-video:models`, `ai-video:job`, etc.) never include `pagination` in their envelope.
 
@@ -620,6 +620,41 @@ the scheduled **posts**, optionally letting them comment or approve.
 - `planner-share-links:activity` answers `{total, data[]}` newest-first, each entry `{type, post_id, name, email, comment, action, created_at}`. `--type` narrows to comments or actions; omit it for both.
 - Prefer `planner-share-links:update <id> --disabled` over `:delete` when a client engagement is only pausing — disabling is reversible, deleting is not.
 - Errors: `SHARE_LINK_NOT_FOUND` (404), `SHARE_LINK_TOKEN_REVOKE_FAILED` (422).
+
+### Webhooks
+
+Outbound webhooks push events (`post.published`, `post.failed`, `inbox.message.received`,
+`automation.bulk.completed`, …) to an https endpoint you own.
+
+**A webhook belongs to the API key's USER, not to a workspace.** Every workspace the user
+is a member of lists the same webhooks; a webhook created under workspace A is readable
+and editable under workspace B. The workspace (`--workspace` / active) only decides
+**whose API credits the call uses** — one credit per call. A workspace the user is not a
+member of answers 403. Each user can have **5 webhooks** (active and paused both count).
+
+| Command | Purpose |
+|---------|---------|
+| `webhooks:event-types` | Events you can subscribe to: `{value, label, group, description, payload_schema}`. Pass `value` to `--event-type` |
+| `webhooks:list` | Your webhooks, newest first, plus `used` / `limit` (5) |
+| `webhooks:get <webhook_id>` | Read one webhook |
+| `webhooks:create --url <https> --event-type <v>… [--name <n>] [--secret whsec_…] [--custom-headers '<json>']` | Create — prints the signing secret ONCE |
+| `webhooks:update <webhook_id> [--url] [--event-type <v>…] [--name] [--custom-headers '<json>'] [--status enabled\|disabled]` | Partial update |
+| `webhooks:disable <webhook_id>` / `webhooks:enable <webhook_id>` | Shorthand for `update --status disabled` / `--status enabled` |
+| `webhooks:delete <webhook_id>` | Delete a webhook |
+| `webhooks:rotate-secret <webhook_id>` | New signing secret, printed ONCE; the old one keeps signing for 24h |
+| `webhooks:deliveries <webhook_id> [--status all\|successful\|failed] [--event-type] [--from] [--to] [--search] [--page] [--per-page]` | Delivery log — the "why did events stop arriving" diagnostic |
+
+- **The secret is shown only by `create` and `rotate-secret`.** `list` / `get` / `update` return `has_secret` and nothing more. When you run either command, show the user `data.secret` immediately and tell them to store it now — it cannot be fetched again. Never paste it into anything else unprompted.
+- `--secret` is optional (`whsec_<base64>`); omit it and the backend generates one. `--dry-run` redacts a supplied secret.
+- **Create pings the URL first.** The URL must be https and publicly reachable: internal addresses are refused (`WEBHOOK_URL_NOT_ALLOWED`), and the endpoint must answer the ping with a 2xx within 5s (`WEBHOOK_PREFLIGHT_FAILED`). Make sure the receiver is live before creating. A new `--url` on update goes through the same check.
+- `--event-type` is repeatable → `event_types[]` (≥1 on create). On update it **replaces** the whole list — pass every event you want to keep.
+- `--custom-headers` is a JSON object of string values sent with every delivery, e.g. `'{"X-Tenant":"acme"}'`. It cannot override the signing or system headers.
+- `status` is `enabled`, `disabled` (paused by you) or `disabled_by_system` (ContentStudio paused it after 15 consecutive failed deliveries and emailed the owner). Resume either paused state with `webhooks:enable` — that also resets the failure count. You cannot set `disabled_by_system` yourself.
+- Prefer `webhooks:disable` over `webhooks:delete` when the pause is temporary — disabling is reversible, deleting is not.
+- **Rotation has a 24h grace window**: `previous_secret_expires_at` (ISO, or null if the webhook had no secret) is when the old secret stops signing. Tell the user to deploy the new secret to their receiver before then.
+- **"My webhook stopped receiving events"** → `webhooks:get` (check `status` and `last_delivery_status`), then `webhooks:deliveries <id> --status failed`. Each row is one event's latest attempt: `{event_id, event_type, outcome, response_status, duration_ms, is_test, created_at}`. `outcome` is `delivered` / `failed` / `retrying` / `skipped_out_of_credits` (not sent — the account's API credit pool ran out; successful deliveries cost one credit each, tests/pings are free). `response_status: null` means the endpoint was unreachable (DNS, TLS, refused, timeout). `--search` takes an exact event ID or part of an event type; `--from` / `--to` are ISO 8601 (no offset = UTC). Deliveries are kept 30 days.
+- Not available through the API: sending a test event, opening a single delivery's request/response bodies, and CSV export — those are in Settings → Webhooks in the web app.
+- Errors: `WEBHOOK_NOT_FOUND` (404 — includes webhooks owned by someone else), `VALIDATION_ERROR` (422), `WEBHOOK_LIMIT_REACHED` (422 — already 5), `WEBHOOK_URL_NOT_ALLOWED` (422), `WEBHOOK_PREFLIGHT_FAILED` (422), `WEBHOOK_REQUEST_FAILED` (500), `API_ACCESS_NOT_ALLOWED` / `API_CREDIT_LIMIT_EXCEEDED` (403), `RATE_LIMIT_EXCEEDED` (429).
 
 ### Labels (write)
 
@@ -1561,7 +1596,9 @@ contentstudio --json inbox:tag-attach <element_ref> \
    `CONTENT_CATEGORY_SLOT_NOT_FOUND`, `CONTENT_CATEGORY_SLOT_DUPLICATE`,
    `APPROVAL_WORKFLOW_NOT_FOUND`, `CANNOT_SET_DRAFT_AS_DEFAULT`,
    `REQUIRES_FORCE_DELETE`, `CASCADE_JOB_NOT_FOUND`, `SHARE_LINK_NOT_FOUND`,
-   `SHARE_LINK_TOKEN_REVOKE_FAILED`, `RATE_LIMIT_EXCEEDED`.
+   `SHARE_LINK_TOKEN_REVOKE_FAILED`, `WEBHOOK_NOT_FOUND`, `WEBHOOK_LIMIT_REACHED`,
+   `WEBHOOK_URL_NOT_ALLOWED`, `WEBHOOK_PREFLIGHT_FAILED`, `WEBHOOK_REQUEST_FAILED`,
+   `API_ACCESS_NOT_ALLOWED`, `API_CREDIT_LIMIT_EXCEEDED`, `RATE_LIMIT_EXCEEDED`.
 
 Two success shapes are also worth not mistaking for failures: a 200 carrying
 `next_slot: null` (`category-slots:next`) and a 200 carrying

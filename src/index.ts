@@ -30,6 +30,7 @@ import { registerMedia } from "./commands/media";
 import { registerPlannerShareLinks } from "./commands/plannerShareLinks";
 import { registerPosts } from "./commands/posts";
 import { registerScheduling } from "./commands/scheduling";
+import { registerWebhooks } from "./commands/webhooks";
 import { registerWorkspaces } from "./commands/workspaces";
 import { maybeNotifyUpdate } from "./updateCheck";
 
@@ -69,6 +70,7 @@ cli = registerCrud(cli);
 cli = registerContentCategories(cli);
 cli = registerApprovalWorkflows(cli);
 cli = registerPlannerShareLinks(cli);
+cli = registerWebhooks(cli);
 cli = registerConnect(cli);
 cli = registerFacebook(cli);
 cli = registerMedia(cli);

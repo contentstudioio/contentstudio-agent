@@ -4168,5 +4168,146 @@ export function getWorkspaceLimits(c: Client, workspaceId: string) {
   return c.get<any>(`/workspaces/${workspaceId}/limits`);
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Webhooks — outbound event subscriptions.
+//
+// A webhook belongs to the API key's USER, not to a workspace: every
+// workspace the user is a member of answers with the same webhooks. The
+// `{workspace_id}` in the path only picks whose API credit pool the call
+// uses (1 credit per call). The webhook object never contains the secret —
+// only create and rotate-secret return it, once.
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * GET /workspaces/{w}/webhooks/event-types
+ *
+ * Returns `[{ value, label, group, description, payload_schema }]`. `value`
+ * is what `event_types[]` takes on create/update.
+ */
+export function listWebhookEventTypes(c: Client, workspaceId: string) {
+  return c.get<any[]>(`/workspaces/${workspaceId}/webhooks/event-types`);
+}
+
+/**
+ * GET /workspaces/{w}/webhooks
+ *
+ * Not paginated. The response is flat (`{status, message, used, limit,
+ * data}`), so this reads the raw envelope — unwrapping would drop `used` and
+ * `limit` (the per-user cap, 5).
+ */
+export async function listWebhooks(
+  c: Client,
+  workspaceId: string,
+): Promise<{ used: number; limit: number; data: any[] }> {
+  const body = await c.request<any>("GET", `/workspaces/${workspaceId}/webhooks`, {
+    unwrap: false,
+  });
+  return {
+    used: Number(body?.used ?? 0),
+    limit: Number(body?.limit ?? 0),
+    data: Array.isArray(body?.data) ? body.data : [],
+  };
+}
+
+/** GET /workspaces/{w}/webhooks/{webhook_id} */
+export function getWebhook(c: Client, workspaceId: string, webhookId: string) {
+  return c.get<any>(`/workspaces/${workspaceId}/webhooks/${webhookId}`);
+}
+
+/**
+ * POST /workspaces/{w}/webhooks
+ *
+ * Body: `url` (required, https, publicly reachable), `event_types` (required,
+ * ≥1), `name` (≤120), `secret` (optional `whsec_…`; omitted → generated),
+ * `custom_headers` (object of strings). The backend refuses internal URLs
+ * (`WEBHOOK_URL_NOT_ALLOWED`) and pings the URL, which must answer 2xx within
+ * 5s (`WEBHOOK_PREFLIGHT_FAILED`). Answers 201 with the webhook plus
+ * `secret` — the only time it is shown, apart from rotate-secret.
+ */
+export function createWebhook(
+  c: Client,
+  workspaceId: string,
+  body: {
+    url: string;
+    event_types: string[];
+    name?: string;
+    secret?: string;
+    custom_headers?: Record<string, unknown>;
+  },
+) {
+  return c.post<any>(`/workspaces/${workspaceId}/webhooks`, { json: body });
+}
+
+/**
+ * PUT /workspaces/{w}/webhooks/{webhook_id} — partial update.
+ *
+ * Accepts `url`, `event_types`, `name`, `custom_headers`, and `status`
+ * (`enabled` | `disabled`). `enabled` also resumes a `disabled_by_system`
+ * webhook and resets its failure count. A new `url` is re-checked and pinged.
+ */
+export function updateWebhook(
+  c: Client,
+  workspaceId: string,
+  webhookId: string,
+  body: Record<string, unknown>,
+) {
+  return c.put<any>(`/workspaces/${workspaceId}/webhooks/${webhookId}`, {
+    json: body,
+  });
+}
+
+/** DELETE /workspaces/{w}/webhooks/{webhook_id} — answers `data: null`. */
+export function deleteWebhook(
+  c: Client,
+  workspaceId: string,
+  webhookId: string,
+) {
+  return c.delete<any>(`/workspaces/${workspaceId}/webhooks/${webhookId}`);
+}
+
+/**
+ * POST /workspaces/{w}/webhooks/{webhook_id}/rotate-secret
+ *
+ * Returns the webhook plus the new `secret` and `previous_secret_expires_at`
+ * (ISO, or null when it had no secret): the old secret keeps signing
+ * alongside the new one for 24h.
+ */
+export function rotateWebhookSecret(
+  c: Client,
+  workspaceId: string,
+  webhookId: string,
+) {
+  return c.post<any>(
+    `/workspaces/${workspaceId}/webhooks/${webhookId}/rotate-secret`,
+  );
+}
+
+/**
+ * GET /workspaces/{w}/webhooks/{webhook_id}/deliveries — paginated (flat
+ * Laravel metadata). One row per event, newest first, showing its latest
+ * attempt: `{ event_id, event_type, outcome, response_status, duration_ms,
+ * is_test, created_at }`. `outcome` is delivered | failed | retrying |
+ * skipped_out_of_credits. Kept for 30 days.
+ */
+export function listWebhookDeliveries(
+  c: Client,
+  workspaceId: string,
+  webhookId: string,
+  params: {
+    status?: "all" | "successful" | "failed";
+    event_type?: string;
+    from?: string;
+    to?: string;
+    search?: string;
+    page?: number;
+    per_page?: number;
+  } = {},
+) {
+  return c.getPaginated<any[]>(
+    `/workspaces/${workspaceId}/webhooks/${webhookId}/deliveries`,
+    params,
+  );
+}
+
 // Re-export ContentStudioError for convenience in commands.
 export { ContentStudioError };

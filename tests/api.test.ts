@@ -2,6 +2,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import nock from "nock";
 
 import {
+  createWebhook,
+  deleteWebhook,
+  getWebhook,
+  listWebhookDeliveries,
+  listWebhookEventTypes,
+  listWebhooks,
+  rotateWebhookSecret,
+  updateWebhook,
+} from "../src/api";
+
+import {
   Client,
   addBlueskyAccount,
   addComment,
@@ -1911,6 +1922,154 @@ describe("Planner share links", () => {
     expect(query.type).toBe("comment");
     expect(resp.total).toBe(2);
     expect(resp.data).toHaveLength(2);
+  });
+});
+
+describe("Webhooks", () => {
+  it("listWebhookEventTypes unwraps the flat data array", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/webhooks/event-types`)
+      .reply(
+        200,
+        envelope([
+          {
+            value: "post.published",
+            label: "Post published",
+            group: "posts",
+            description: "x",
+            payload_schema: "WebhookPostEventData",
+          },
+        ]),
+      );
+    const data: any = await listWebhookEventTypes(mkClient(), "ws-1");
+    expect(data[0].value).toBe("post.published");
+  });
+
+  it("listWebhooks keeps used/limit off the flat envelope", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/webhooks`)
+      .reply(200, {
+        status: true,
+        message: "ok",
+        used: 1,
+        limit: 5,
+        data: [{ id: "wh-1", status: "enabled", has_secret: true }],
+      });
+    const resp = await listWebhooks(mkClient(), "ws-1");
+    expect(resp.used).toBe(1);
+    expect(resp.limit).toBe(5);
+    expect(resp.data[0].id).toBe("wh-1");
+  });
+
+  it("createWebhook POSTs the contract body and returns the one-time secret", async () => {
+    let sent: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/webhooks`, (b) => {
+        sent = b;
+        return true;
+      })
+      .reply(201, envelope({ id: "wh-1", has_secret: true, secret: "whsec_abc" }));
+    const data: any = await createWebhook(mkClient(), "ws-1", {
+      url: "https://example.com/hook",
+      event_types: ["post.published", "post.failed"],
+      name: "Prod",
+      custom_headers: { "X-Tenant": "acme" },
+    });
+    expect(sent).toEqual({
+      url: "https://example.com/hook",
+      event_types: ["post.published", "post.failed"],
+      name: "Prod",
+      custom_headers: { "X-Tenant": "acme" },
+    });
+    expect(data.secret).toBe("whsec_abc");
+  });
+
+  it("createWebhook surfaces WEBHOOK_PREFLIGHT_FAILED as a ValidationError", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/webhooks`)
+      .reply(422, {
+        status: false,
+        message: "The URL did not answer the ping.",
+        error_code: "WEBHOOK_PREFLIGHT_FAILED",
+      });
+    const err: any = await createWebhook(mkClient(), "ws-1", {
+      url: "https://example.com/hook",
+      event_types: ["post.published"],
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(ValidationError);
+    expect(err.payload.error_code).toBe("WEBHOOK_PREFLIGHT_FAILED");
+  });
+
+  it("get / update / delete address the webhook id", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/webhooks/wh-1`)
+      .reply(200, envelope({ id: "wh-1", status: "enabled" }));
+    const got: any = await getWebhook(mkClient(), "ws-1", "wh-1");
+    expect(got.id).toBe("wh-1");
+
+    let sent: any;
+    nock(BASE)
+      .put(`${PATH}/workspaces/ws-1/webhooks/wh-1`, (b) => {
+        sent = b;
+        return true;
+      })
+      .reply(200, envelope({ id: "wh-1", status: "disabled" }));
+    const upd: any = await updateWebhook(mkClient(), "ws-1", "wh-1", {
+      status: "disabled",
+    });
+    expect(sent).toEqual({ status: "disabled" });
+    expect(upd.status).toBe("disabled");
+
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/webhooks/wh-1`)
+      .reply(200, envelope(null));
+    await deleteWebhook(mkClient(), "ws-1", "wh-1");
+    expect(nock.isDone()).toBe(true);
+  });
+
+  it("rotateWebhookSecret POSTs and returns secret + grace expiry", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/webhooks/wh-1/rotate-secret`)
+      .reply(
+        200,
+        envelope({
+          id: "wh-1",
+          secret: "whsec_new",
+          previous_secret_expires_at: "2026-10-07T09:12:44+00:00",
+        }),
+      );
+    const data: any = await rotateWebhookSecret(mkClient(), "ws-1", "wh-1");
+    expect(data.secret).toBe("whsec_new");
+    expect(data.previous_secret_expires_at).toBe("2026-10-07T09:12:44+00:00");
+  });
+
+  it("listWebhookDeliveries forwards filters and preserves pagination", async () => {
+    let query: any;
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/webhooks/wh-1/deliveries`)
+      .query((q) => {
+        query = q;
+        return true;
+      })
+      .reply(200, {
+        status: true,
+        message: "ok",
+        current_page: 1,
+        per_page: 25,
+        total: 42,
+        last_page: 2,
+        from: 1,
+        to: 25,
+        data: [{ event_id: "e1", event_type: "post.published", outcome: "failed", response_status: 503 }],
+      });
+    const resp = await listWebhookDeliveries(mkClient(), "ws-1", "wh-1", {
+      status: "failed",
+      event_type: "post.published",
+      per_page: 25,
+    });
+    expect(query).toEqual({ status: "failed", event_type: "post.published", per_page: "25" });
+    expect((resp.data as any[])[0].outcome).toBe("failed");
+    expect(resp.pagination?.has_more).toBe(true);
   });
 });
 
