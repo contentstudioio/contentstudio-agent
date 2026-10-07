@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- **Per-platform post options** on `posts:create` / `posts:update` (CONT-4072):
+  `--pinterest-options` (Pin title, link), `--gmb-options` (Google Business
+  call-to-action button, event, offer), `--youtube-options` (title, privacy,
+  category, tags, playlist, license, made for kids), `--tiktok-options`
+  (privacy level, comments/Duet/Stitch, branded content, AI label, cover frame),
+  `--video-thumbnail` and `--hide-client`. The backend already accepted all of
+  these; they were reachable only through a hand-written `--body` file.
+- `--linkedin-options` documents `accounts` (which LinkedIn accounts get a
+  carousel), `--facebook-carousel` cards take a `media_id`, and
+  `--platform-overrides` media takes `media_ids` and `video_thumbnail`.
+- `SKILL.md` tells agents to ask for a platform's options only when an account of
+  that platform is selected.
+
 ## 1.6.0 — content categories, approval workflows, planner share links, AI video (2026-09-17)
 
 The public API gained five surfaces; the CLI mirrors all of them.
