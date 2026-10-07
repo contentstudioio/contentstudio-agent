@@ -180,6 +180,142 @@ describe("--dry-run paths never hit the network", () => {
     expect(fb.carousel.call_to_action).toBe("SHOP_NOW");
   });
 
+  it("posts:create --dry-run sends the per-platform option flags", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({ api_key: "cs_INVALID", active_workspace_id: "ws-bogus" }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "Autumn menu",
+        "-i",
+        "pin1",
+        "-i",
+        "gmb1",
+        "-t",
+        "draft",
+        "--post-type",
+        "video",
+        "--video-url",
+        "https://e.com/v.mp4",
+        "--video-thumbnail",
+        "https://e.com/t.jpg",
+        "--pinterest-options",
+        '{"title":"Autumn menu","link":"https://e.com/menu"}',
+        "--gmb-options",
+        '{"action_type":"ORDER","cta_link":"https://e.com/order"}',
+        "--youtube-options",
+        '{"title":"Our menu","privacy_status":"private","made_for_kids":false}',
+        "--tiktok-options",
+        '{"privacy_level":"SELF_ONLY","disable_comment":false}',
+        "--hide-client",
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).toBe(0);
+    const body = JSON.parse(r.stdout).data.body;
+    expect(body.pinterest_options).toEqual({ title: "Autumn menu", link: "https://e.com/menu" });
+    expect(body.gmb_options).toEqual({ action_type: "ORDER", cta_link: "https://e.com/order" });
+    expect(body.youtube_options).toEqual({ title: "Our menu", privacy_status: "private", made_for_kids: false });
+    expect(body.tiktok_options).toEqual({ privacy_level: "SELF_ONLY", disable_comment: false });
+    expect(body.content.media).toEqual({ video: "https://e.com/v.mp4", video_thumbnail: "https://e.com/t.jpg" });
+    expect(body.hide_client).toBe(true);
+  });
+
+  it("posts:create --dry-run leaves the option blocks out when the flags are absent", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({ api_key: "cs_INVALID", active_workspace_id: "ws-bogus" }),
+    );
+    const r = run(
+      ["--json", "posts:create", "--dry-run", "-c", "Hi", "-i", "a1", "-t", "draft"],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).toBe(0);
+    const body = JSON.parse(r.stdout).data.body;
+    for (const key of ["pinterest_options", "gmb_options", "youtube_options", "tiktok_options", "hide_client"]) {
+      expect(body).not.toHaveProperty(key);
+    }
+    expect(body.content).not.toHaveProperty("media");
+  });
+
+  it("posts:create --dry-run passes the new nested keys through the existing JSON flags", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({ api_key: "cs_INVALID", active_workspace_id: "ws-bogus" }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:create",
+        "--dry-run",
+        "-c",
+        "Carousel",
+        "-i",
+        "li1",
+        "-t",
+        "draft",
+        "--post-type",
+        "carousel",
+        "--linkedin-options",
+        '{"title":"LI","accounts":["li1"]}',
+        "--facebook-carousel",
+        '{"cards":[{"media_id":"m1","link":"https://e.com/1"},{"image":"https://e.com/2.jpg","link":"https://e.com/2"}]}',
+        "--platform-overrides",
+        '{"youtube":{"content":{"media":{"media_ids":["m2"],"video_thumbnail":"https://e.com/yt.jpg"}}}}',
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).toBe(0);
+    const body = JSON.parse(r.stdout).data.body;
+    expect(body.linkedin_options).toEqual({ title: "LI", accounts: ["li1"] });
+    expect(body.facebook_options.carousel.cards[0]).toEqual({ media_id: "m1", link: "https://e.com/1" });
+    expect(body.platform_overrides.youtube.content.media).toEqual({ media_ids: ["m2"], video_thumbnail: "https://e.com/yt.jpg" });
+  });
+
+  it("posts:update --dry-run sends the per-platform option flags too", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({ api_key: "cs_INVALID", active_workspace_id: "ws-bogus" }),
+    );
+    const r = run(
+      [
+        "--json",
+        "posts:update",
+        "p1",
+        "--dry-run",
+        "-c",
+        "Edited",
+        "-i",
+        "gmb1",
+        "-t",
+        "draft",
+        "--gmb-options",
+        '{"action_type":"CALL"}',
+      ],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.stdout).data.body.gmb_options).toEqual({ action_type: "CALL" });
+  });
+
+  it("posts:create rejects invalid JSON in --gmb-options before calling the API", () => {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({ api_key: "cs_INVALID", active_workspace_id: "ws-bogus" }),
+    );
+    const r = run(
+      ["--json", "posts:create", "--dry-run", "-c", "Hi", "-i", "a1", "-t", "draft", "--gmb-options", "{not json"],
+      { CONTENTSTUDIO_CONFIG_PATH: cfgFile },
+    );
+    expect(r.code).not.toBe(0);
+    expect(r.stdout + r.stderr).toContain("--gmb-options");
+  });
+
   it("posts:create --dry-run with --threads builds multi_threads block", () => {
     fs.writeFileSync(
       cfgFile,

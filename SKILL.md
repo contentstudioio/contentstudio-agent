@@ -304,6 +304,8 @@ leaving the user with a half-finished job.
 | `posts:create -c "text" -i <linkedin_account> -t draft --post-type poll --linkedin-options '<json>'` | Create a LinkedIn poll post (text-only) |
 | `posts:create -c "text" -i <ig_account> -t draft --post-type reel --video-url <url> --instagram-trial-reel` | Create an Instagram trial reel (shown to non-followers first) |
 | `posts:create -c "common text" -i <fb_account> -i <tiktok_account> -t draft -m <img_url> --platform-overrides '<json>'` | Same post to multiple platforms with a per-platform content override |
+| `posts:create -c "text" -i <gmb_account> -t draft --gmb-options '{"action_type":"LEARN_MORE","cta_link":"https://…"}'` | Google Business post with a call-to-action button |
+| `posts:create -c "text" -i <yt_account> -i <tiktok_account> -t draft --post-type video --video-url <url> --youtube-options '<json>' --tiktok-options '<json>'` | Video to YouTube and TikTok with title/privacy settings |
 | `posts:create -c "text" -i <account> -t scheduled -s "..." --repeat-type Week --repeat-times 4 --repeat-gap 1` | Create a post that repeats (spawns 4 independent child posts) |
 | `posts:create --body /path/to/body.json` | Create a post with full JSON body |
 | `posts:update <post_id> [same flags as posts:create]` | Update an existing post (same body). Rejected (422) once the post is published/processing |
@@ -333,7 +335,8 @@ leaving the user with a half-finished job.
   - **Repeat is never inherited on update.** A `posts:update` without the repeat flags creates no children, so a read-modify-write of a repeating post is safe: you cannot accidentally re-spawn the series by round-tripping it.
   - On the **read** side (`posts:get` / `posts:list`) `scheduling.repeat` is `{is_parent, is_child, parent_id, type, times, gap}` — there is **no `enabled` key**, that one is request-only. Do not feed a read payload's repeat block straight back into an update and expect it to mean the same thing.
 - `--linkedin-options '<json>'` → `linkedin_options` (**LinkedIn accounts**). Pass a JSON **object**; the CLI parses it locally (invalid JSON → `ConfigError`) and sends it verbatim.
-  - Shape: `{ "title"?: <string>, "poll"?: { "question": <≤140>, "options": <string[2..4], each ≤30>, "duration": "ONE_DAY" | "THREE_DAYS" | "SEVEN_DAYS" | "FOURTEEN_DAYS" } }`
+  - Shape: `{ "title"?: <string ≤255>, "poll"?: { "question": <≤140>, "options": <string[2..4], each ≤30>, "duration": "ONE_DAY" | "THREE_DAYS" | "SEVEN_DAYS" | "FOURTEEN_DAYS" }, "accounts"?: <LinkedIn account IDs> }`
+  - `accounts` (carousel posts only) picks which of the post's LinkedIn accounts get the carousel; the others publish it as a normal post. Must be a subset of `--account`.
   - A **poll** must be paired with `--post-type poll` and text-only content (no images/video). Backend validates and 422s on violations.
 - `--facebook-collaborator <user_id>` (repeatable, **max 10**) → `facebook_options.collaborators` (Facebook accounts). Merges with `--facebook-carousel` / `--facebook-background-id`.
 - `--instagram-collaborator <user_id>` (repeatable, **max 3**) → `instagram_options.collaborators` (Instagram accounts). Rejected (422) together with `--instagram-trial-reel`.
@@ -343,11 +346,11 @@ leaving the user with a half-finished job.
   - **Rejected (422) together with `--instagram-collaborator`.** Share-to-story is silently dropped (not rejected) when combined with a trial reel.
   - Not available when the workspace posts to Instagram via the mobile app (`instagram_posting_option=mobile`).
 - `--platform-overrides '<json>'` → `platform_overrides` (top-level, works across any platform in the post). Pass a JSON **object** keyed by platform (`facebook`, `instagram`, `twitter`, `linkedin`, `pinterest`, `youtube`, `tiktok`, `gmb`, `tumblr`, `threads`, `bluesky`, `telegram`); the CLI parses it locally (invalid JSON → `ConfigError`) and sends it verbatim.
-  - Shape per platform: `{ "content": { "text"?: <string>, "post_type"?: <string>, "media"?: { "images"?: <url[] ≤10>, "video"?: <url> } } }`.
+  - Shape per platform: `{ "content": { "text"?: <string>, "post_type"?: <string>, "media"?: { "images"?: <url[] ≤10>, "video"?: <url>, "media_ids"?: <string[] ≤10>, "video_thumbnail"?: <url> } } }`.
   - `text` and `post_type` each merge **independently** with the common top-level `content` — an override with only `media` still inherits the common `text`/`post_type`.
   - `media` is **atomic**: if an override's `content` includes a `media` key at all, that platform's media is defined ENTIRELY by the override (no per-field fallback to the common media for whichever of `images`/`video` it omits). Omitting `media` entirely inherits the common `content.media` wholesale. This exists because some platforms (e.g. TikTok) can never support mixed images+video.
   - Omitting `--platform-overrides` entirely publishes the same top-level `content` to every targeted platform.
-  - Override images are URLs only (no `media_ids`) and follow the same validation as the top-level media (max 10 images, no mixing images+video in one override).
+  - Override media follows the same validation as the top-level media (max 10 items, no mixing images+video in one override). Media-library assets go in `media_ids`; a custom thumbnail for that platform's video in `video_thumbnail`.
 - **Approval — two mutually-exclusive systems (pass only one):**
   - **Legacy** `--approver <user_id>` (repeatable) + `--approve-option anyone|everyone` (default `anyone`) + `--approval-notes "..."` → builds `approval: {approvers, approve_option, notes}` only when at least one approver is given. The post creator cannot be an approver. `anyone` = any single approver; `everyone` = all must approve.
   - **Workflow** `--approval-workflow-id <id>` + `--approval-workflow-notes "..."` → `approval_workflow: {workflow_id, notes?}` — ATTACH a workflow (works on both create and update). Get the id from `approval-workflows:list` (its `id`).
@@ -355,7 +358,7 @@ leaving the user with a half-finished job.
   - **Exactly one** of `--approval-workflow-id` / `--approval-workflow-action`, and `--approver` cannot be combined with either `--approval-workflow-*` flag. The CLI errors locally (`ConfigError`) if these rules are broken.
 - `--facebook-background-id <id>` → `facebook_options.facebook_background_id` (plain-text Facebook posts only; rejected if media is attached). Get a valid id from `facebook:text-backgrounds`.
 - `--facebook-carousel '<json>'` → `facebook_options.carousel` (**Facebook accounts only**). Pass a JSON **object**; the CLI parses it locally (invalid JSON → `ConfigError`) and adds `is_carousel_post: true`. It **merges** with `--facebook-background-id` (neither clobbers the other). The backend validates card counts/CTA/limits and returns a 422 if they're wrong.
-  - Shape: `{ "cards": [ { "image": <url, required>, "link": <url, required>, "title"?: <≤255>, "description"?: <≤1000> } ], "call_to_action"?, "end_card"?: <bool>, "end_card_url"?: <url>, "accounts"?: <string[]> }`
+  - Shape: `{ "cards": [ { "image": <url> | "media_id": <media-library id>, "link": <url, required>, "title"?: <≤255>, "description"?: <≤1000> } ], "call_to_action"?, "end_card"?: <bool>, "end_card_url"?: <url>, "accounts"?: <string[]> }` — each card needs an `image` URL **or** a `media_id`.
   - **MIN 2, MAX 10 cards.** The Facebook account ID(s) still go in the top-level `-i / --account` (or in `carousel.accounts`).
   - `call_to_action` is one of 33 values: `NO_BUTTON`, `ADD_TO_CART`, `APPLY_NOW`, `BET_NOW`, `BOOK_TRAVEL`, `BUY_NOW`, `BUY_TICKETS`, `CALL_NOW`, `CONTACT_US`, `DOWNLOAD`, `GET_DIRECTIONS`, `GET_OFFER`, `GET_QUOTE`, `GO_LIVE`, `INSTALL_MOBILE_APP`, `LEARN_MORE`, `LIKE_PAGE`, `LISTEN_MUSIC`, `OPEN_LINK`, `ORDER_NOW`, `PLAY_GAME`, `REGISTER_NOW`, `REQUEST_TIME`, `SAVE`, `MESSAGE_PAGE`, `WHATSAPP_MESSAGE`, `SHOP_NOW`, `SIGN_UP`, `SUBSCRIBE`, `USE_APP`, `WATCH_MORE`, `WATCH_VIDEO`.
 - `--threads '<json>'` → `threads_options` (**Threads accounts only**). Pass a JSON **array** of thread items; the CLI parses it locally (invalid JSON → `ConfigError`), sets `has_multi_threads: true` and `multi_threads: <array>`. The Threads account ID goes in the top-level `-i / --account`.
@@ -367,7 +370,28 @@ leaving the user with a half-finished job.
 - `--first-comment "<message>"` → `first_comment` (≤2000 chars). The CLI builds `first_comment: { message, accounts? }`. The accounts are supplied with `--first-comment-account <id>` (repeatable).
   - `--first-comment-account <id>` (repeatable) → `first_comment.accounts`. **The backend REQUIRES at least one account when a `--first-comment` message is given, and the accounts must be a subset of the post's main `--account` IDs.** The CLI does not hard-block client-side — if you omit `--first-comment-account`, the backend returns a 422.
 
-(`--facebook-carousel`, `--facebook-collaborator`, `--instagram-collaborator`, `--instagram-trial-reel`, `--instagram-trial-reel-graduation`, `--linkedin-options`, `--platform-overrides`, `--threads`, and `--twitter` only apply in shortcut mode. The `--body` JSON mode already supports `facebook_options` (carousel + collaborators), `instagram_options` (`collaborators` + `trial_reel`), `linkedin_options`, `threads_options`, `twitter_options`, `first_comment`, `approval`, `approval_workflow`, and top-level `platform_overrides` natively — use it for posts that mix multiple platform option blocks.)
+- `--pinterest-options '<json>'` → `pinterest_options` (**Pinterest accounts**). Shape: `{ "title"?: <≤100>, "link"?: <URL the Pin opens> }`.
+- `--gmb-options '<json>'` → `gmb_options` (**Google Business Profile accounts**).
+  - Button: `{ "action_type": "BOOK" | "ORDER" | "SHOP" | "LEARN_MORE" | "SIGN_UP" | "CALL" | "No Button", "cta_link"?: <url> }` — every button except `CALL` needs `cta_link` (`CALL` uses the business phone).
+  - Event / offer: `{ "topic_type": "EVENT" | "OFFER", "title"?: <≤100>, "start_date"?, "end_date"?, "coupon_code"?, "redeem_online_url"?, "terms_conditions"? }` (coupon, redeem URL and terms are for offers).
+- `--youtube-options '<json>'` → `youtube_options` (**YouTube accounts**, `--post-type video` or `shorts`). Shape: `{ "title"?: <≤100>, "privacy_status"?: "public" | "private", "category"?: <e.g. "EDUCATION", "GAMING", "MUSIC">, "playlist"?: <playlist ID>, "tags"?: <string[], each ≤30>, "license"?: "youtube" | "creativeCommon", "embeddable"?: <bool>, "notify_subscribers"?: <bool>, "made_for_kids"?: <bool> }`. Unset keys keep the defaults (public, standard license, embeddable, notify subscribers, not made for kids).
+  - Categories: `CARS_VEHICLES`, `COMEDY`, `EDUCATION`, `ENTERTAINMENT`, `FILM_ANIMATION`, `GAMING`, `HOW_TO_STYLE`, `MUSIC`, `NEWS_POLITICS`, `NON_PROFITS_ACTIVISM`, `PEOPLE_BLOGS`, `PETS_ANIMALS`, `SCIENCE_TECHNOLOGY`, `SPORT`, `TRAVEL_EVENTS`.
+- `--tiktok-options '<json>'` → `tiktok_options` (**TikTok accounts**). Shape: `{ "privacy_level"?: "PUBLIC_TO_EVERYONE" | "MUTUAL_FOLLOW_FRIENDS" | "SELF_ONLY", "publishing_method"?: "direct" | "notification", "disable_comment"?, "disable_duet"?, "disable_stitch"?, "auto_add_music"?, "brand_content_toggle"?, "brand_organic_toggle"?, "disclose_commercial_content"?, "is_aigc"?, "video_cover_timestamp_ms"?: <ms ≥0> }`.
+  - TikTok has **no default `privacy_level`** — always set it. Comments, Duet and Stitch are **disabled** unless set to `false`. `notification` sends the post to the TikTok app inbox to finish there. TikTok does not take a custom thumbnail; `video_cover_timestamp_ms` picks the cover frame.
+- `--video-thumbnail <url>` → `content.media.video_thumbnail`. Custom thumbnail for the post's video (`--video-url`). TikTok ignores it.
+- `--hide-client` (boolean) → `hide_client`. Hides a **draft** from client users; ignored for other publish types.
+- All four `--*-options` flags take a JSON **object**; the CLI parses it locally (invalid JSON → `ConfigError`) and sends it verbatim. The backend validates the values and returns a 422 naming the bad field.
+
+**Ask for platform options by platform.** When building a post for a user, look at which platforms the chosen `--account` IDs belong to (`accounts:list`) and ask — one question at a time, always allowing "use defaults" — only for those platforms:
+  - Pinterest: Pin title and link.
+  - Google Business: a button (and its URL); event/offer details only if the user says it is one.
+  - YouTube: video title, public or private, made for kids.
+  - TikTok: who can see it (**always ask** — there is no default), and whether to allow comments, Duet and Stitch.
+  - LinkedIn: optional title; for a carousel with several LinkedIn accounts, which get the carousel.
+  - Any video: an optional custom thumbnail.
+  - Drafts the user mentions clients for: whether to hide it from clients.
+
+(`--facebook-carousel`, `--facebook-collaborator`, `--instagram-collaborator`, `--instagram-trial-reel`, `--instagram-trial-reel-graduation`, `--linkedin-options`, `--pinterest-options`, `--gmb-options`, `--youtube-options`, `--tiktok-options`, `--video-thumbnail`, `--hide-client`, `--platform-overrides`, `--threads`, and `--twitter` only apply in shortcut mode. The `--body` JSON mode already supports `facebook_options` (carousel + collaborators), `instagram_options` (`collaborators` + `trial_reel`), `linkedin_options`, `pinterest_options`, `gmb_options`, `youtube_options`, `tiktok_options`, `hide_client`, `content.media.video_thumbnail`, `threads_options`, `twitter_options`, `first_comment`, `approval`, `approval_workflow`, and top-level `platform_overrides` natively — use it for posts that mix multiple platform option blocks.)
 
 The `posts:list` payload now includes `linkedin_options` and `approval_workflow` per post (in addition to the existing fields) — they surface automatically in the `--json` output.
 

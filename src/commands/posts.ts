@@ -343,7 +343,7 @@ function applyPostBodyOptions<T>(y: Argv<T>): Argv<T> {
     .option("linkedin-options", {
       type: "string",
       describe:
-        'LinkedIn options as a JSON object: {"title"?:<string>,"poll"?:{"question":<≤140>,"options":<string[2..4], each ≤30>,"duration":"ONE_DAY|THREE_DAYS|SEVEN_DAYS|FOURTEEN_DAYS"}}. A poll requires --post-type poll and text-only content. → linkedin_options',
+        'LinkedIn options as a JSON object: {"title"?:<string>,"poll"?:{"question":<≤140>,"options":<string[2..4], each ≤30>,"duration":"ONE_DAY|THREE_DAYS|SEVEN_DAYS|FOURTEEN_DAYS"},"accounts"?:<LinkedIn account IDs>}. A poll requires --post-type poll and text-only content. "accounts" (carousel posts only) picks which of the post\'s LinkedIn accounts get the carousel; the rest publish it as a normal post. → linkedin_options',
     })
     .option("facebook-background-id", {
       type: "string",
@@ -353,7 +353,7 @@ function applyPostBodyOptions<T>(y: Argv<T>): Argv<T> {
     .option("facebook-carousel", {
       type: "string",
       describe:
-        'Facebook carousel as a JSON object: {"cards":[{"image","link","title?","description?"}],"call_to_action?","end_card?","end_card_url?","accounts?"}. 2–10 cards. Facebook accounts only.',
+        'Facebook carousel as a JSON object: {"cards":[{"image"|"media_id","link","title?","description?"}],"call_to_action?","end_card?","end_card_url?","accounts?"}. 2–10 cards; each card needs an image URL or a media-library media_id. Facebook accounts only.',
     })
     .option("facebook-collaborator", {
       type: "string",
@@ -382,7 +382,7 @@ function applyPostBodyOptions<T>(y: Argv<T>): Argv<T> {
     .option("platform-overrides", {
       type: "string",
       describe:
-        'Per-platform content overrides as a JSON object keyed by platform: facebook, instagram, twitter, linkedin, pinterest, youtube, tiktok, gmb, tumblr, threads, bluesky, telegram. Each value is {"content":{"text"?,"post_type"?,"media"?:{"images"?,"video"?}}}. `text` and `post_type` each merge independently with the common content — an override with only `media` still inherits the common text/post_type. `media` is atomic: including a `media` key at all (even partial) replaces that platform\'s media entirely, with NO fallback to the common media for the half it omits; omitting `media` inherits the common media wholesale. Omit --platform-overrides entirely to publish the same content to every platform. → platform_overrides',
+        'Per-platform content overrides as a JSON object keyed by platform: facebook, instagram, twitter, linkedin, pinterest, youtube, tiktok, gmb, tumblr, threads, bluesky, telegram. Each value is {"content":{"text"?,"post_type"?,"media"?:{"images"?,"video"?,"media_ids"?,"video_thumbnail"?}}}. `text` and `post_type` each merge independently with the common content — an override with only `media` still inherits the common text/post_type. `media` is atomic: including a `media` key at all (even partial) replaces that platform\'s media entirely, with NO fallback to the common media for the half it omits; omitting `media` inherits the common media wholesale. Omit --platform-overrides entirely to publish the same content to every platform. → platform_overrides',
     })
     .option("threads", {
       type: "string",
@@ -393,6 +393,36 @@ function applyPostBodyOptions<T>(y: Argv<T>): Argv<T> {
       type: "string",
       describe:
         'Twitter/X threaded tweets as a JSON array: [{"message","media?","media_ids?"}]. Max 10 items, each needs message or media. Twitter accounts only — NO mixed media in one tweet (no images+video together) and max 1 video per tweet.',
+    })
+    .option("pinterest-options", {
+      type: "string",
+      describe:
+        'Pinterest options as a JSON object: {"title"?:<≤100 chars>,"link"?:<URL the Pin opens>}. Pinterest accounts only. → pinterest_options',
+    })
+    .option("gmb-options", {
+      type: "string",
+      describe:
+        'Google Business Profile options as a JSON object. Button: {"action_type":"BOOK|ORDER|SHOP|LEARN_MORE|SIGN_UP|CALL|No Button","cta_link"?:<URL>} (CALL uses the business phone, no link). Event/offer: {"topic_type":"EVENT|OFFER","title"?:<≤100>,"start_date"?,"end_date"?,"coupon_code"?,"redeem_online_url"?,"terms_conditions"?}. Google Business accounts only. → gmb_options',
+    })
+    .option("youtube-options", {
+      type: "string",
+      describe:
+        'YouTube options as a JSON object: {"title"?:<≤100>,"privacy_status"?:"public|private","category"?:"EDUCATION|GAMING|MUSIC|…","playlist"?:<playlist ID>,"tags"?:<string[], each ≤30>,"license"?:"youtube|creativeCommon","embeddable"?,"notify_subscribers"?,"made_for_kids"?}. Unset keys keep the defaults. YouTube accounts only (--post-type video or shorts). → youtube_options',
+    })
+    .option("tiktok-options", {
+      type: "string",
+      describe:
+        'TikTok options as a JSON object: {"privacy_level"?:"PUBLIC_TO_EVERYONE|MUTUAL_FOLLOW_FRIENDS|SELF_ONLY","publishing_method"?:"direct|notification","disable_comment"?,"disable_duet"?,"disable_stitch"?,"auto_add_music"?,"brand_content_toggle"?,"brand_organic_toggle"?,"disclose_commercial_content"?,"is_aigc"?,"video_cover_timestamp_ms"?:<ms ≥0>}. TikTok has no default privacy_level — set it. Comments/Duet/Stitch are disabled unless set to false. TikTok accounts only. → tiktok_options',
+    })
+    .option("video-thumbnail", {
+      type: "string",
+      describe:
+        "Custom thumbnail image URL for the video (use with --video-url). TikTok ignores it — use video_cover_timestamp_ms in --tiktok-options. → content.media.video_thumbnail",
+    })
+    .option("hide-client", {
+      type: "boolean",
+      describe:
+        "Hide this draft from client users (drafts only; ignored for other publish types). → hide_client",
     })
     .option("first-comment", {
       type: "string",
@@ -445,6 +475,12 @@ function buildPostBodyFromArgv(argv: any): Record<string, unknown> {
         "object",
       ) as Record<string, unknown>)
     : undefined;
+
+  const pinterestOptions = parseOptionalObjectFlag(argv, "pinterest-options", "pinterestOptions");
+  const gmbOptions = parseOptionalObjectFlag(argv, "gmb-options", "gmbOptions");
+  const youtubeOptions = parseOptionalObjectFlag(argv, "youtube-options", "youtubeOptions");
+  const tiktokOptions = parseOptionalObjectFlag(argv, "tiktok-options", "tiktokOptions");
+  const hideClient = argv["hide-client"] ?? argv.hideClient;
 
   const threadsRaw = argv.threads;
   const multiThreads = threadsRaw
@@ -547,6 +583,12 @@ function buildPostBodyFromArgv(argv: any): Record<string, unknown> {
       ? String(approvalWorkflowNotes)
       : undefined,
     linkedinOptions,
+    pinterestOptions,
+    gmbOptions,
+    youtubeOptions,
+    tiktokOptions,
+    videoThumbnail: argv["video-thumbnail"] ?? argv.videoThumbnail,
+    hideClient: typeof hideClient === "boolean" ? hideClient : undefined,
     facebookBackgroundId:
       argv["facebook-background-id"] ?? argv.facebookBackgroundId,
     facebookCarousel,
@@ -724,6 +766,18 @@ function readJsonFile(p: string, flagName: string): Record<string, unknown> {
  * helpful ConfigError on invalid JSON or a shape mismatch; the backend still
  * validates the contents (card counts, CTA values, item limits).
  */
+/** Parse an optional JSON-object flag (kebab or camel key), or undefined when absent. */
+function parseOptionalObjectFlag(
+  argv: any,
+  flag: string,
+  camel: string,
+): Record<string, unknown> | undefined {
+  const raw = argv[flag] ?? argv[camel];
+  return raw
+    ? (parseJsonFlag(String(raw), `--${flag}`, "object") as Record<string, unknown>)
+    : undefined;
+}
+
 function parseJsonFlag(
   raw: string,
   flagName: string,
@@ -860,6 +914,12 @@ function buildSimplePostBody(opts: {
   approvalWorkflowAction?: string;
   approvalWorkflowNotes?: string;
   linkedinOptions?: Record<string, unknown>;
+  pinterestOptions?: Record<string, unknown>;
+  gmbOptions?: Record<string, unknown>;
+  youtubeOptions?: Record<string, unknown>;
+  tiktokOptions?: Record<string, unknown>;
+  videoThumbnail?: string;
+  hideClient?: boolean;
   facebookBackgroundId?: string;
   facebookCarousel?: Record<string, unknown>;
   facebookCollaborators?: string[];
@@ -877,6 +937,7 @@ function buildSimplePostBody(opts: {
   if (opts.imageUrls?.length) media.images = opts.imageUrls;
   if (opts.videoUrl) media.video = opts.videoUrl;
   if (opts.mediaIds?.length) media.media_ids = opts.mediaIds;
+  if (opts.videoThumbnail) media.video_thumbnail = opts.videoThumbnail;
   if (Object.keys(media).length) content.media = media;
 
   const scheduling: Record<string, unknown> = { publish_type: opts.publishType };
@@ -927,6 +988,13 @@ function buildSimplePostBody(opts: {
   if (opts.linkedinOptions) {
     body.linkedin_options = opts.linkedinOptions;
   }
+  // Per-platform option blocks — passed through as given; the backend
+  // validates the values and merges them over its defaults.
+  if (opts.pinterestOptions) body.pinterest_options = opts.pinterestOptions;
+  if (opts.gmbOptions) body.gmb_options = opts.gmbOptions;
+  if (opts.youtubeOptions) body.youtube_options = opts.youtubeOptions;
+  if (opts.tiktokOptions) body.tiktok_options = opts.tiktokOptions;
+  if (opts.hideClient !== undefined) body.hide_client = opts.hideClient;
 
   // Facebook options can carry a background preset, a carousel, and/or
   // collaborators. Merge them into the same object so none clobbers the others.
