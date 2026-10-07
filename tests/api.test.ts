@@ -2,6 +2,19 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import nock from "nock";
 
 import {
+  addBrandSources,
+  createBrand,
+  deleteBrand,
+  deleteBrandSource,
+  getBrand,
+  getBrandPostSettings,
+  getBrandSection,
+  syncBrand,
+  updateBrand,
+  updateBrandPostSettings,
+} from "../src/api";
+
+import {
   createWebhook,
   deleteWebhook,
   getWebhook,
@@ -2070,6 +2083,128 @@ describe("Webhooks", () => {
     expect(query).toEqual({ status: "failed", event_type: "post.published", per_page: "25" });
     expect((resp.data as any[])[0].outcome).toBe("failed");
     expect(resp.pagination?.has_more).toBe(true);
+  });
+});
+
+describe("Brand Knowledge", () => {
+  it("getBrand / getBrandSection read the brand paths", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/brand`)
+      .reply(200, envelope({ schema_version: 1, is_set_up: false, created_at: null }));
+    const brand: any = await getBrand(mkClient(), "ws-1");
+    expect(brand.is_set_up).toBe(false);
+
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/brand/voice`)
+      .reply(200, envelope({ schema_version: 1, is_set_up: true, brand_voice: { tone: ["Warm"] }, updated_at: "x" }));
+    const sec: any = await getBrandSection(mkClient(), "ws-1", "voice");
+    expect(sec.brand_voice.tone).toEqual(["Warm"]);
+  });
+
+  it("createBrand POSTs the source body", async () => {
+    let sent: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/brand`, (b) => {
+        sent = b;
+        return true;
+      })
+      .reply(201, envelope({ is_set_up: true }));
+    const body = {
+      website_url: "https://acme.coffee",
+      text: "Small-batch roaster",
+      files: [{ url: "https://acme.coffee/guide.pdf", name: "Guide" }],
+      social_accounts: ["1329910333529595"],
+    };
+    const data: any = await createBrand(mkClient(), "ws-1", body);
+    expect(sent).toEqual(body);
+    expect(data.is_set_up).toBe(true);
+  });
+
+  it("createBrand maps 409 BRAND_ALREADY_EXISTS and 502 BRAND_ANALYSIS_FAILED", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/brand`)
+      .reply(409, { status: false, message: "exists", error_code: "BRAND_ALREADY_EXISTS" });
+    const conflict: any = await createBrand(mkClient(), "ws-1", { text: "x" }).catch((e) => e);
+    expect(conflict).toBeInstanceOf(ConflictError);
+    expect(conflict.payload.error_code).toBe("BRAND_ALREADY_EXISTS");
+
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/brand`)
+      .reply(502, { status: false, message: "failed", error_code: "BRAND_ANALYSIS_FAILED" });
+    const failed: any = await createBrand(mkClient(), "ws-1", { text: "x" }).catch((e) => e);
+    expect(failed).toBeInstanceOf(BackendError);
+  });
+
+  it("updateBrand PATCHes only the sections sent", async () => {
+    let sent: any;
+    nock(BASE)
+      .patch(`${PATH}/workspaces/ws-1/brand`, (b) => {
+        sent = b;
+        return true;
+      })
+      .reply(200, envelope({ brand_enabled: false }));
+    await updateBrand(mkClient(), "ws-1", {
+      brand_voice: { tone: ["Bold"] },
+      brand_enabled: false,
+    });
+    expect(sent).toEqual({ brand_voice: { tone: ["Bold"] }, brand_enabled: false });
+  });
+
+  it("deleteBrand / deleteBrandSource / syncBrand address the right paths", async () => {
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/brand`)
+      .reply(200, envelope({ deleted: true, brand_assets: 2, source_materials: 1, logo: true }));
+    const del: any = await deleteBrand(mkClient(), "ws-1");
+    expect(del.brand_assets).toBe(2);
+
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/brand/sources/src-1`)
+      .reply(200, envelope({ deleted: true, id: "src-1", auto_reply_rules_affected: ["Shipping"] }));
+    const src: any = await deleteBrandSource(mkClient(), "ws-1", "src-1");
+    expect(src.auto_reply_rules_affected).toEqual(["Shipping"]);
+
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/brand/sources/missing`)
+      .reply(404, { status: false, message: "nope", error_code: "BRAND_SOURCE_NOT_FOUND" });
+    await expect(deleteBrandSource(mkClient(), "ws-1", "missing")).rejects.toBeInstanceOf(NotFoundError);
+
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/brand/sync`)
+      .reply(200, envelope({ is_set_up: true }));
+    await syncBrand(mkClient(), "ws-1");
+    expect(nock.isDone()).toBe(true);
+  });
+
+  it("addBrandSources POSTs to /brand/sources and returns added + brand", async () => {
+    let sent: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/brand/sources`, (b) => {
+        sent = b;
+        return true;
+      })
+      .reply(201, envelope({ added: [{ id: "s1", type: "website", status: "synced" }], brand: { is_set_up: true } }));
+    const data: any = await addBrandSources(mkClient(), "ws-1", { website_url: "https://acme.coffee" });
+    expect(sent).toEqual({ website_url: "https://acme.coffee" });
+    expect(data.added[0].status).toBe("synced");
+    expect(data.brand.is_set_up).toBe(true);
+  });
+
+  it("post generation settings GET + PATCH", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/brand/post-generation-settings`)
+      .reply(200, envelope({ social_platform: null, language: "English", no_of_posts: 10 }));
+    const got: any = await getBrandPostSettings(mkClient(), "ws-1");
+    expect(got.social_platform).toBeNull();
+
+    let sent: any;
+    nock(BASE)
+      .patch(`${PATH}/workspaces/ws-1/brand/post-generation-settings`, (b) => {
+        sent = b;
+        return true;
+      })
+      .reply(200, envelope({ social_platform: "linkedin", no_of_posts: 5 }));
+    await updateBrandPostSettings(mkClient(), "ws-1", { social_platform: "linkedin", no_of_posts: 5 });
+    expect(sent).toEqual({ social_platform: "linkedin", no_of_posts: 5 });
   });
 });
 

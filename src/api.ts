@@ -4309,5 +4309,149 @@ export function listWebhookDeliveries(
   );
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Brand Knowledge — the workspace's brand (style, profile, voice, source
+// materials) that ContentStudio's AI resolves server-side for generation.
+// One brand per workspace. Base path /workspaces/{w}/brand.
+//
+// POST /brand, POST /brand/sources and POST /brand/sync run the app's brand
+// analysis synchronously (up to ~2 minutes), so the commands call them with a
+// BRAND_ANALYSIS_TIMEOUT_MS client and retries OFF — the built-in 5xx retry
+// would re-run an analysis after a 502 BRAND_ANALYSIS_FAILED.
+// ─────────────────────────────────────────────────────────────────
+
+/** Client timeout for the slow analysis calls (create / add sources / sync). */
+export const BRAND_ANALYSIS_TIMEOUT_MS = 180_000;
+
+/** Sections `GET /brand/{section}` accepts. */
+export const BRAND_SECTIONS = ["style", "profile", "voice"] as const;
+
+/** Body of `POST /brand` and `POST /brand/sources` (at least one field). */
+export interface BrandSourcesBody {
+  /** Website to scrape and analyse. */
+  website_url?: string;
+  /** Brand info text, ≤10000 chars. */
+  text?: string;
+  /** ≤50 public https documents (PDF/DOCX/TXT/Markdown); `name` ≤255. */
+  files?: { url: string; name?: string }[];
+  /** Account `id`s from `GET /accounts` — connected accounts of this workspace. */
+  social_accounts?: string[];
+}
+
+/**
+ * GET /workspaces/{w}/brand — the brand object. A workspace without a brand
+ * answers 200 with `is_set_up: false`, empty sections and null timestamps.
+ */
+export function getBrand(c: Client, workspaceId: string) {
+  return c.get<any>(`/workspaces/${workspaceId}/brand`);
+}
+
+/**
+ * GET /workspaces/{w}/brand/{section} — `style` | `profile` | `voice`.
+ * Returns `{ schema_version, is_set_up, brand_<section>, updated_at }`.
+ */
+export function getBrandSection(
+  c: Client,
+  workspaceId: string,
+  section: (typeof BRAND_SECTIONS)[number],
+) {
+  return c.get<any>(`/workspaces/${workspaceId}/brand/${section}`);
+}
+
+/**
+ * POST /workspaces/{w}/brand — build the brand by AI analysis ("Build My
+ * Brand Knowledge"). 201 with the brand. 409 BRAND_ALREADY_EXISTS when the
+ * workspace already has one; 422 BRAND_INSUFFICIENT_CONTENT; 502
+ * BRAND_ANALYSIS_FAILED (nothing saved — retry).
+ */
+export function createBrand(
+  c: Client,
+  workspaceId: string,
+  body: BrandSourcesBody,
+) {
+  return c.post<any>(`/workspaces/${workspaceId}/brand`, { json: body });
+}
+
+/**
+ * PATCH /workspaces/{w}/brand — partial update of `brand_style`,
+ * `brand_profile`, `brand_voice` and/or `brand_enabled`. Only fields sent
+ * change; a list sent replaces that list; unknown keys are rejected. Creates
+ * the brand (without analysis) if the workspace has none.
+ */
+export function updateBrand(
+  c: Client,
+  workspaceId: string,
+  body: Record<string, unknown>,
+) {
+  return c.patch<any>(`/workspaces/${workspaceId}/brand`, { json: body });
+}
+
+/**
+ * DELETE /workspaces/{w}/brand — permanent. Returns
+ * `{ deleted: true, brand_assets, source_materials, logo }`. 404 BRAND_NOT_FOUND.
+ */
+export function deleteBrand(c: Client, workspaceId: string) {
+  return c.delete<any>(`/workspaces/${workspaceId}/brand`);
+}
+
+/**
+ * POST /workspaces/{w}/brand/sources — add sources and AI-blend each into the
+ * existing brand. 201 `{ added: [source…], brand }`; each added source is
+ * `synced` or `unreachable`. 404 BRAND_NOT_FOUND; 422 VALIDATION_ERROR (incl.
+ * >50 sources total on `source_materials`); 422 BRAND_SOURCE_ADD_FAILED.
+ */
+export function addBrandSources(
+  c: Client,
+  workspaceId: string,
+  body: BrandSourcesBody,
+) {
+  return c.post<any>(`/workspaces/${workspaceId}/brand/sources`, { json: body });
+}
+
+/**
+ * DELETE /workspaces/{w}/brand/sources/{source_id} — returns
+ * `{ deleted: true, id, auto_reply_rules_affected: [rule names] }`.
+ * 404 BRAND_NOT_FOUND / BRAND_SOURCE_NOT_FOUND.
+ */
+export function deleteBrandSource(
+  c: Client,
+  workspaceId: string,
+  sourceId: string,
+) {
+  return c.delete<any>(
+    `/workspaces/${workspaceId}/brand/sources/${encodeURIComponent(sourceId)}`,
+  );
+}
+
+/**
+ * POST /workspaces/{w}/brand/sync — re-analyse ALL sources and overwrite the
+ * style/profile/voice. No body. 404 BRAND_NOT_FOUND; 422
+ * BRAND_INSUFFICIENT_CONTENT; 502 BRAND_ANALYSIS_FAILED.
+ */
+export function syncBrand(c: Client, workspaceId: string) {
+  return c.post<any>(`/workspaces/${workspaceId}/brand/sync`);
+}
+
+/** GET /workspaces/{w}/brand/post-generation-settings */
+export function getBrandPostSettings(c: Client, workspaceId: string) {
+  return c.get<any>(`/workspaces/${workspaceId}/brand/post-generation-settings`);
+}
+
+/**
+ * PATCH /workspaces/{w}/brand/post-generation-settings — only fields sent
+ * change. Nothing saves until a `social_platform` is stored or sent (422 on
+ * `social_platform`). Creates the brand if the workspace has none.
+ */
+export function updateBrandPostSettings(
+  c: Client,
+  workspaceId: string,
+  body: Record<string, unknown>,
+) {
+  return c.patch<any>(
+    `/workspaces/${workspaceId}/brand/post-generation-settings`,
+    { json: body },
+  );
+}
+
 // Re-export ContentStudioError for convenience in commands.
 export { ContentStudioError };
