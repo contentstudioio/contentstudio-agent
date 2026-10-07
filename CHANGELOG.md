@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Threads inbox
+
+- Threads in the Social Inbox: `inbox:list`, `inbox:comments` and every comment
+  write accept Threads (replies to your posts and mentions of your account).
+- `inbox:comment-add --attachment` on Threads waits (up to five minutes) for
+  Threads to process the media before the reply publishes.
+- `inbox:send --platform-type threads` is refused before any request with
+  *Threads messaging is not available through this integration.*
+
 ## 1.6.0 — content categories, approval workflows, planner share links, AI video (2026-09-17)
 
 The public API gained five surfaces; the CLI mirrors all of them.

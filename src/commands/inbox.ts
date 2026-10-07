@@ -17,6 +17,7 @@ import type { Argv } from "yargs";
 import {
   MAX_INBOX_BULK_REFS,
   MAX_INBOX_LIMIT,
+  THREADS_NO_MESSAGING,
   addInboxNote,
   addInboxPostComment,
   attachInboxTags,
@@ -520,8 +521,9 @@ function registerConversations<T>(yargs: Argv<T>): Argv<T> {
           .positional("conversation_id", { type: "string", demandOption: true })
           .option("platform-type", {
             type: "string",
-            choices: ["facebook", "instagram"],
-            describe: "Platform of the conversation (required).",
+            describe:
+              "Platform of the conversation (required): facebook or instagram. " +
+              "Threads has no messaging.",
           })
           .option("platform-id", {
             type: "string",
@@ -547,6 +549,14 @@ function registerConversations<T>(yargs: Argv<T>): Argv<T> {
         const platformId = argv["platform-id"] ?? argv.platformId;
         if (!platformType || !platformId) {
           throw new ConfigError("--platform-type and --platform-id are required.");
+        }
+        if (platformType === "threads") {
+          throw new ConfigError(THREADS_NO_MESSAGING);
+        }
+        if (!["facebook", "instagram"].includes(String(platformType))) {
+          throw new ConfigError(
+            `--platform-type must be facebook or instagram (got ${platformType}).`,
+          );
         }
         if (!argv.message && !argv.file) {
           throw new ConfigError("Provide --message and/or --file.");
@@ -818,7 +828,7 @@ function registerComments<T>(yargs: Argv<T>): Argv<T> {
   return yargs
     .command(
       "inbox:comments <post_id>",
-      "List a post's comments (threaded). Id = element_details.post_id.",
+      "List a post's comments (threaded, any depth). Id = element_details.post_id.",
       (y) =>
         y
           .positional("post_id", { type: "string", demandOption: true })
@@ -882,7 +892,12 @@ function registerComments<T>(yargs: Argv<T>): Argv<T> {
             default: false,
             describe: "Send as a Facebook private reply (DM) instead of a comment.",
           })
-          .option("attachment", { type: "string", describe: "Path to an attachment." })
+          .option("attachment", {
+            type: "string",
+            describe:
+              "Path to an attachment. On Threads the call waits (up to five minutes) for " +
+              "the media to process before the reply publishes.",
+          })
           .option("idempotency-key", { type: "string" })
           .option("dry-run", { type: "boolean", default: false }),
       run(async (argv: any, g) => {
@@ -1087,6 +1102,7 @@ function registerComments<T>(yargs: Argv<T>): Argv<T> {
       }),
     );
 }
+
 
 // ─────────────────────────────────────────────────────────────────
 // Reviews — reply upsert / delete.
