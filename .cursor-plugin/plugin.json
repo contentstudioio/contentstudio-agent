@@ -1,0 +1,32 @@
+{
+  "name": "contentstudio",
+  "version": "1.5.0",
+  "description": "Schedule and publish social-media posts, manage media, approvals, the social inbox, and analytics across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile through ContentStudio's hosted MCP server. Sign in with your ContentStudio account.",
+  "author": {
+    "name": "ContentStudio"
+  },
+  "homepage": "https://contentstudio.io",
+  "repository": "https://github.com/contentstudioio/contentstudio-agent",
+  "license": "MIT",
+  "logo": "assets/logo.svg",
+  "keywords": [
+    "contentstudio",
+    "social-media",
+    "scheduling",
+    "automation",
+    "ai-agent",
+    "marketing",
+    "facebook",
+    "linkedin",
+    "twitter",
+    "instagram",
+    "tiktok",
+    "youtube",
+    "pinterest",
+    "threads",
+    "bluesky",
+    "social-inbox"
+  ],
+  "skills": ["./skills/contentstudio"],
+  "mcpServers": "./mcp.json"
+}

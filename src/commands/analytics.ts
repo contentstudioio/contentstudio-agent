@@ -52,44 +52,6 @@ interface AnalyticsOpSpec {
 
 const ANALYTICS_OPS: AnalyticsOpSpec[] = [
   {
-    "cmd": "analytics:facebook-active-users",
-    "fn": "facebookAnalyticsActiveUsers",
-    "desc": "Facebook active users by hour and day of week",
-    "params": [
-      {
-        "name": "platform_id",
-        "type": "string",
-        "required": true,
-        "description": "Platform Account ID"
-      },
-      {
-        "name": "start_date",
-        "type": "string",
-        "required": true,
-        "description": "Start of the date range (YYYY-MM-DD)"
-      },
-      {
-        "name": "end_date",
-        "type": "string",
-        "required": true,
-        "description": "End of the date range (YYYY-MM-DD)"
-      },
-      {
-        "name": "date",
-        "type": "string",
-        "required": false,
-        "description": "Alternative date range in 'YYYY-MM-DD - YYYY-MM-DD' format (overrides start_date/end_date)"
-      },
-      {
-        "name": "timezone",
-        "type": "string",
-        "required": false,
-        "default": "UTC",
-        "description": "IANA timezone name"
-      }
-    ]
-  },
-  {
     "cmd": "analytics:facebook-ai-insights",
     "fn": "facebookAnalyticsAiInsights",
     "desc": "Facebook AI-generated insights",
@@ -190,81 +152,11 @@ const ANALYTICS_OPS: AnalyticsOpSpec[] = [
     "desc": "Facebook audience location (country/city breakdown)",
     "params": [
       {
-        "name": "platform_id",
-        "type": "string",
-        "required": true,
-        "description": "Platform Account ID"
-      },
-      {
-        "name": "start_date",
-        "type": "string",
-        "required": true,
-        "description": "Start of the date range (YYYY-MM-DD)"
-      },
-      {
-        "name": "end_date",
-        "type": "string",
-        "required": true,
-        "description": "End of the date range (YYYY-MM-DD)"
-      },
-      {
-        "name": "date",
+        "name": "country",
         "type": "string",
         "required": false,
-        "description": "Alternative date range in 'YYYY-MM-DD - YYYY-MM-DD' format (overrides start_date/end_date)"
+        "description": "ISO 3166-1 alpha-2 code restricting audience_city to one country; available_countries in the response lists the valid codes"
       },
-      {
-        "name": "timezone",
-        "type": "string",
-        "required": false,
-        "default": "UTC",
-        "description": "IANA timezone name"
-      }
-    ]
-  },
-  {
-    "cmd": "analytics:facebook-demographics",
-    "fn": "facebookAnalyticsDemographics",
-    "desc": "Facebook audience age / gender / country / city demographics",
-    "params": [
-      {
-        "name": "platform_id",
-        "type": "string",
-        "required": true,
-        "description": "Platform Account ID"
-      },
-      {
-        "name": "start_date",
-        "type": "string",
-        "required": true,
-        "description": "Start of the date range (YYYY-MM-DD)"
-      },
-      {
-        "name": "end_date",
-        "type": "string",
-        "required": true,
-        "description": "End of the date range (YYYY-MM-DD)"
-      },
-      {
-        "name": "date",
-        "type": "string",
-        "required": false,
-        "description": "Alternative date range in 'YYYY-MM-DD - YYYY-MM-DD' format (overrides start_date/end_date)"
-      },
-      {
-        "name": "timezone",
-        "type": "string",
-        "required": false,
-        "default": "UTC",
-        "description": "IANA timezone name"
-      }
-    ]
-  },
-  {
-    "cmd": "analytics:facebook-demographics-overview",
-    "fn": "facebookAnalyticsDemographicsOverview",
-    "desc": "Facebook demographics overview widget",
-    "params": [
       {
         "name": "platform_id",
         "type": "string",
@@ -1165,6 +1057,12 @@ const ANALYTICS_OPS: AnalyticsOpSpec[] = [
     "fn": "instagramAnalyticsCountryCity",
     "desc": "Instagram audience country / city breakdown",
     "params": [
+      {
+        "name": "country",
+        "type": "string",
+        "required": false,
+        "description": "ISO 3166-1 alpha-2 code restricting audience_city to one country; available_countries in the response lists the valid codes"
+      },
       {
         "name": "platform_id",
         "type": "string",

@@ -4,6 +4,7 @@ import type { Argv } from "yargs";
 import {
   createPost,
   deletePost,
+  getPost,
   listPosts,
   postApproval,
   updatePost,
@@ -62,6 +63,34 @@ export function registerPosts<T>(yargs: Argv<T>): Argv<T> {
             ),
           { pagination: resp.pagination },
         );
+      }),
+    )
+    .command(
+      "posts:get <post_id>",
+      "Read one post. The payload is identical to that post's row in posts:list — a deleted post, one in another workspace, and a malformed id all answer 404.",
+      (y) => y.positional("post_id", { type: "string", demandOption: true }),
+      run(async (argv: any, g) => {
+        const { cfg, client } = buildClient(g);
+        const wid = resolveWorkspace(cfg, g);
+        const data: any = await getPost(client, wid, String(argv.post_id));
+        out.emitSuccess(data, g, (d: any) => {
+          out.status("ID", String(d?.id ?? d?._id ?? "-"));
+          out.status("Status", String(d?.status ?? "-"));
+          out.status(
+            "Scheduled",
+            String(d?.scheduling?.scheduled_at ?? d?.scheduled_at ?? "-"),
+          );
+          const repeat = d?.scheduling?.repeat;
+          if (repeat?.is_parent || repeat?.is_child) {
+            out.status(
+              "Repeat",
+              repeat.is_child
+                ? `child of ${repeat.parent_id}`
+                : `parent — every ${repeat.gap} ${repeat.type}, ${repeat.times}x`,
+            );
+          }
+          out.status("Text", shortText(d, 200) || "-");
+        });
       }),
     )
     .command(
@@ -229,7 +258,8 @@ function applyPostBodyOptions<T>(y: Argv<T>): Argv<T> {
       alias: "t",
       type: "string",
       choices: ["scheduled", "draft", "queued", "content_category"],
-      describe: "Shortcut: scheduling.publish_type.",
+      describe:
+        "Shortcut: scheduling.publish_type. `scheduled`/`draft` need --scheduled-at. Repeat (--repeat-type) only applies to `scheduled`.",
     })
     .option("scheduled-at", {
       alias: "s",
@@ -262,6 +292,22 @@ function applyPostBodyOptions<T>(y: Argv<T>): Argv<T> {
     .option("campaign-id", {
       type: "string",
       describe: "Campaign ID to assign the post to.",
+    })
+    .option("repeat-type", {
+      type: "string",
+      choices: ["Day", "Week", "Month"],
+      describe:
+        "Repeat the post → scheduling.repeat.type. Requires --publish-type scheduled, plus --repeat-times and --repeat-gap; the CLI sends enabled:true with them.",
+    })
+    .option("repeat-times", {
+      type: "number",
+      describe:
+        "How many repeats to create, 1–30 → scheduling.repeat.times. Each one becomes an independent child post.",
+    })
+    .option("repeat-gap", {
+      type: "number",
+      describe:
+        "Interval between repeats, 1–99 → scheduling.repeat.gap. Must be ≥3 when --repeat-type Day.",
     })
     .option("approver", {
       type: "string",
@@ -372,7 +418,7 @@ function applyPostBodyOptions<T>(y: Argv<T>): Argv<T> {
  */
 function buildPostBodyFromArgv(argv: any): Record<string, unknown> {
   if (argv.body) {
-    return readJsonFile(argv.body, "--body");
+    return normalizePostBody(readJsonFile(argv.body, "--body"));
   }
 
   const contentCategoryId =
@@ -489,6 +535,7 @@ function buildPostBodyFromArgv(argv: any): Record<string, unknown> {
     postType: argv["post-type"] ?? argv.postType,
     labels: (argv.label as string[] | undefined)?.filter(Boolean),
     campaignId: argv["campaign-id"] ?? argv.campaignId,
+    repeat: buildRepeat(argv, String(argv["publish-type"])),
     approvers,
     approveOption: argv["approve-option"] ?? argv.approveOption,
     approvalNotes: argv["approval-notes"] ?? argv.approvalNotes,
@@ -572,6 +619,88 @@ function shortText(p: any, limit = 60): string {
   return flat.length > limit ? flat.slice(0, limit - 1) + "…" : flat;
 }
 
+/**
+ * Accept the shapes the lookup endpoints hand back — "id", { id }, { _id } —
+ * and reduce them to the bare id the posts API takes.
+ */
+function toResourceId(value: unknown): string | undefined {
+  if (typeof value === "string") return value.trim() || undefined;
+  if (typeof value === "number") return String(value);
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const o = value as Record<string, unknown>;
+    const id = o.id ?? o._id;
+    if (typeof id === "string") return id.trim() || undefined;
+    if (typeof id === "number") return String(id);
+  }
+  return undefined;
+}
+
+/**
+ * Reshape a hand-written `--body` payload into the contract the API documents.
+ *
+ * A --body file is written against what `labels:list` and `campaigns:list`
+ * return, so labels and campaigns arrive as whole objects and scheduling
+ * borrows the internal `execute_time` name. The API wants label ID strings,
+ * `campaign_id`, and `scheduling.scheduled_at`. Sent as-is, the label objects
+ * returned a 500, the campaign was dropped without a word, and the schedule
+ * time never arrived.
+ *
+ * An entry that carries no id is an error rather than something to drop —
+ * silently posting without the label the caller asked for is worse than
+ * refusing.
+ */
+export function normalizePostBody(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...body };
+
+  if (out.labels !== undefined) {
+    const labels = Array.isArray(out.labels) ? out.labels : [out.labels];
+    out.labels = labels.map((label, i) => {
+      const id = toResourceId(label);
+      if (!id) {
+        throw new ConfigError(
+          `--body: labels[${i}] has no id — pass the label ID as a string, or an object with an "id".`,
+        );
+      }
+      return id;
+    });
+  }
+
+  if (out.campaign !== undefined) {
+    const id = toResourceId(out.campaign);
+    if (!id) {
+      throw new ConfigError(
+        '--body: campaign has no id — pass campaign_id as a string, or an object with an "id".',
+      );
+    }
+    delete out.campaign;
+    if (out.campaign_id === undefined) out.campaign_id = id;
+  }
+
+  if (out.campaign_id !== undefined && out.campaign_id !== null) {
+    const id = toResourceId(out.campaign_id);
+    if (!id) {
+      throw new ConfigError(
+        '--body: campaign_id has no id — pass it as a string, or an object with an "id".',
+      );
+    }
+    out.campaign_id = id;
+  }
+
+  const scheduling = out.scheduling;
+  if (scheduling && typeof scheduling === "object" && !Array.isArray(scheduling)) {
+    const s = { ...(scheduling as Record<string, unknown>) };
+    if (s.scheduled_at === undefined && s.execute_time !== undefined) {
+      s.scheduled_at = s.execute_time;
+    }
+    delete s.execute_time;
+    out.scheduling = s;
+  }
+
+  return out;
+}
+
 function readJsonFile(p: string, flagName: string): Record<string, unknown> {
   if (!fs.existsSync(p)) {
     throw new ConfigError(`${flagName}: file not found — ${p}`);
@@ -631,6 +760,58 @@ function parseJsonFlag(
 }
 
 /**
+ * Build `scheduling.repeat` from the --repeat-* flags, or undefined when none
+ * were passed.
+ *
+ * `enabled` is REQUIRED by the backend whenever the `repeat` key is present at
+ * all, so it is always sent alongside the other three rather than left to a
+ * default. All three of type/times/gap are demanded together: a partial block
+ * is a 400 from the posts endpoints, and failing here costs nothing.
+ *
+ * Repeat is gated to `scheduled`. The backend's own rule is broader — it also
+ * accepts repeat on `now` — but `now` is not a publish type this CLI offers,
+ * so `scheduled` is the only type a caller can pair it with here.
+ */
+function buildRepeat(
+  argv: any,
+  publishType: string,
+): Record<string, unknown> | undefined {
+  const type = argv["repeat-type"] ?? argv.repeatType;
+  const times = argv["repeat-times"] ?? argv.repeatTimes;
+  const gap = argv["repeat-gap"] ?? argv.repeatGap;
+
+  if (type === undefined && times === undefined && gap === undefined) {
+    return undefined;
+  }
+
+  if (publishType !== "scheduled") {
+    throw new ConfigError(
+      `Repeat is only available on --publish-type scheduled (got "${publishType}").`,
+    );
+  }
+
+  const missing: string[] = [];
+  if (type === undefined) missing.push("--repeat-type");
+  if (times === undefined) missing.push("--repeat-times");
+  if (gap === undefined) missing.push("--repeat-gap");
+  if (missing.length) {
+    throw new ConfigError(
+      `Repeat needs all three flags — missing ${missing.join(", ")}.`,
+      {
+        hint: "e.g. --repeat-type Week --repeat-times 4 --repeat-gap 1",
+      },
+    );
+  }
+
+  return {
+    enabled: true,
+    type: String(type),
+    times: Number(times),
+    gap: Number(gap),
+  };
+}
+
+/**
  * Normalize a date string to the backend's `Y-m-d H:i:s` format.
  * Already-correct input is returned as-is; unparseable input is passed
  * through so the backend can validate. Ported from the MCP create_post tool.
@@ -671,6 +852,7 @@ function buildSimplePostBody(opts: {
   postType?: string;
   labels?: string[];
   campaignId?: string;
+  repeat?: Record<string, unknown>;
   approvers?: string[];
   approveOption?: string;
   approvalNotes?: string;
@@ -700,6 +882,10 @@ function buildSimplePostBody(opts: {
   const scheduling: Record<string, unknown> = { publish_type: opts.publishType };
   const scheduledAt = formatToYmdHis(opts.scheduledAt);
   if (scheduledAt) scheduling.scheduled_at = scheduledAt;
+  // Only ever sent when the caller asked for it. The backend never inherits an
+  // existing repeat on update, so omitting the key is what makes a
+  // read-modify-write safe — sending an empty block would not be.
+  if (opts.repeat) scheduling.repeat = opts.repeat;
 
   const body: Record<string, unknown> = {
     content,
