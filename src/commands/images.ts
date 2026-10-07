@@ -335,7 +335,8 @@ export function registerImages<T>(yargs: Argv<T>): Argv<T> {
           if (!d.configured || !d.enabled) {
             out.info(
               "`images:generate --use-brand` will come back with `brand_applied: false` — " +
-                "that is not an error. Brand knowledge is set up in the ContentStudio web app.",
+                "that is not an error. Set the brand up with `brand:create` / `brand:update` " +
+                "(or in the ContentStudio web app); `brand:update --brand-enabled` turns it on.",
             );
           }
         });

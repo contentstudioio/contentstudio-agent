@@ -2,6 +2,30 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import nock from "nock";
 
 import {
+  addBrandSources,
+  createBrand,
+  deleteBrand,
+  deleteBrandSource,
+  getBrand,
+  getBrandPostSettings,
+  getBrandSection,
+  syncBrand,
+  updateBrand,
+  updateBrandPostSettings,
+} from "../src/api";
+
+import {
+  createWebhook,
+  deleteWebhook,
+  getWebhook,
+  listWebhookDeliveries,
+  listWebhookEventTypes,
+  listWebhooks,
+  rotateWebhookSecret,
+  updateWebhook,
+} from "../src/api";
+
+import {
   Client,
   addBlueskyAccount,
   addComment,
@@ -1911,6 +1935,276 @@ describe("Planner share links", () => {
     expect(query.type).toBe("comment");
     expect(resp.total).toBe(2);
     expect(resp.data).toHaveLength(2);
+  });
+});
+
+describe("Webhooks", () => {
+  it("listWebhookEventTypes unwraps the flat data array", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/webhooks/event-types`)
+      .reply(
+        200,
+        envelope([
+          {
+            value: "post.published",
+            label: "Post published",
+            group: "posts",
+            description: "x",
+            payload_schema: "WebhookPostEventData",
+          },
+        ]),
+      );
+    const data: any = await listWebhookEventTypes(mkClient(), "ws-1");
+    expect(data[0].value).toBe("post.published");
+  });
+
+  it("listWebhooks keeps used/limit off the flat envelope", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/webhooks`)
+      .reply(200, {
+        status: true,
+        message: "ok",
+        used: 1,
+        limit: 5,
+        data: [{ id: "wh-1", status: "enabled", has_secret: true }],
+      });
+    const resp = await listWebhooks(mkClient(), "ws-1");
+    expect(resp.used).toBe(1);
+    expect(resp.limit).toBe(5);
+    expect(resp.data[0].id).toBe("wh-1");
+  });
+
+  it("createWebhook POSTs the contract body and returns the one-time secret", async () => {
+    let sent: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/webhooks`, (b) => {
+        sent = b;
+        return true;
+      })
+      .reply(201, envelope({ id: "wh-1", has_secret: true, secret: "whsec_abc" }));
+    const data: any = await createWebhook(mkClient(), "ws-1", {
+      url: "https://example.com/hook",
+      event_types: ["post.published", "post.failed"],
+      name: "Prod",
+      custom_headers: { "X-Tenant": "acme" },
+    });
+    expect(sent).toEqual({
+      url: "https://example.com/hook",
+      event_types: ["post.published", "post.failed"],
+      name: "Prod",
+      custom_headers: { "X-Tenant": "acme" },
+    });
+    expect(data.secret).toBe("whsec_abc");
+  });
+
+  it("createWebhook surfaces WEBHOOK_PREFLIGHT_FAILED as a ValidationError", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/webhooks`)
+      .reply(422, {
+        status: false,
+        message: "The URL did not answer the ping.",
+        error_code: "WEBHOOK_PREFLIGHT_FAILED",
+      });
+    const err: any = await createWebhook(mkClient(), "ws-1", {
+      url: "https://example.com/hook",
+      event_types: ["post.published"],
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(ValidationError);
+    expect(err.payload.error_code).toBe("WEBHOOK_PREFLIGHT_FAILED");
+  });
+
+  it("get / update / delete address the webhook id", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/webhooks/wh-1`)
+      .reply(200, envelope({ id: "wh-1", status: "enabled" }));
+    const got: any = await getWebhook(mkClient(), "ws-1", "wh-1");
+    expect(got.id).toBe("wh-1");
+
+    let sent: any;
+    nock(BASE)
+      .put(`${PATH}/workspaces/ws-1/webhooks/wh-1`, (b) => {
+        sent = b;
+        return true;
+      })
+      .reply(200, envelope({ id: "wh-1", status: "disabled" }));
+    const upd: any = await updateWebhook(mkClient(), "ws-1", "wh-1", {
+      status: "disabled",
+    });
+    expect(sent).toEqual({ status: "disabled" });
+    expect(upd.status).toBe("disabled");
+
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/webhooks/wh-1`)
+      .reply(200, envelope(null));
+    await deleteWebhook(mkClient(), "ws-1", "wh-1");
+    expect(nock.isDone()).toBe(true);
+  });
+
+  it("rotateWebhookSecret POSTs and returns secret + grace expiry", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/webhooks/wh-1/rotate-secret`)
+      .reply(
+        200,
+        envelope({
+          id: "wh-1",
+          secret: "whsec_new",
+          previous_secret_expires_at: "2026-10-07T09:12:44+00:00",
+        }),
+      );
+    const data: any = await rotateWebhookSecret(mkClient(), "ws-1", "wh-1");
+    expect(data.secret).toBe("whsec_new");
+    expect(data.previous_secret_expires_at).toBe("2026-10-07T09:12:44+00:00");
+  });
+
+  it("listWebhookDeliveries forwards filters and preserves pagination", async () => {
+    let query: any;
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/webhooks/wh-1/deliveries`)
+      .query((q) => {
+        query = q;
+        return true;
+      })
+      .reply(200, {
+        status: true,
+        message: "ok",
+        current_page: 1,
+        per_page: 25,
+        total: 42,
+        last_page: 2,
+        from: 1,
+        to: 25,
+        data: [{ event_id: "e1", event_type: "post.published", outcome: "failed", response_status: 503 }],
+      });
+    const resp = await listWebhookDeliveries(mkClient(), "ws-1", "wh-1", {
+      status: "failed",
+      event_type: "post.published",
+      per_page: 25,
+    });
+    expect(query).toEqual({ status: "failed", event_type: "post.published", per_page: "25" });
+    expect((resp.data as any[])[0].outcome).toBe("failed");
+    expect(resp.pagination?.has_more).toBe(true);
+  });
+});
+
+describe("Brand Knowledge", () => {
+  it("getBrand / getBrandSection read the brand paths", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/brand`)
+      .reply(200, envelope({ schema_version: 1, is_set_up: false, created_at: null }));
+    const brand: any = await getBrand(mkClient(), "ws-1");
+    expect(brand.is_set_up).toBe(false);
+
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/brand/voice`)
+      .reply(200, envelope({ schema_version: 1, is_set_up: true, brand_voice: { tone: ["Warm"] }, updated_at: "x" }));
+    const sec: any = await getBrandSection(mkClient(), "ws-1", "voice");
+    expect(sec.brand_voice.tone).toEqual(["Warm"]);
+  });
+
+  it("createBrand POSTs the source body", async () => {
+    let sent: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/brand`, (b) => {
+        sent = b;
+        return true;
+      })
+      .reply(201, envelope({ is_set_up: true }));
+    const body = {
+      website_url: "https://acme.coffee",
+      text: "Small-batch roaster",
+      files: [{ url: "https://acme.coffee/guide.pdf", name: "Guide" }],
+      social_accounts: ["1329910333529595"],
+    };
+    const data: any = await createBrand(mkClient(), "ws-1", body);
+    expect(sent).toEqual(body);
+    expect(data.is_set_up).toBe(true);
+  });
+
+  it("createBrand maps 409 BRAND_ALREADY_EXISTS and 502 BRAND_ANALYSIS_FAILED", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/brand`)
+      .reply(409, { status: false, message: "exists", error_code: "BRAND_ALREADY_EXISTS" });
+    const conflict: any = await createBrand(mkClient(), "ws-1", { text: "x" }).catch((e) => e);
+    expect(conflict).toBeInstanceOf(ConflictError);
+    expect(conflict.payload.error_code).toBe("BRAND_ALREADY_EXISTS");
+
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/brand`)
+      .reply(502, { status: false, message: "failed", error_code: "BRAND_ANALYSIS_FAILED" });
+    const failed: any = await createBrand(mkClient(), "ws-1", { text: "x" }).catch((e) => e);
+    expect(failed).toBeInstanceOf(BackendError);
+  });
+
+  it("updateBrand PATCHes only the sections sent", async () => {
+    let sent: any;
+    nock(BASE)
+      .patch(`${PATH}/workspaces/ws-1/brand`, (b) => {
+        sent = b;
+        return true;
+      })
+      .reply(200, envelope({ brand_enabled: false }));
+    await updateBrand(mkClient(), "ws-1", {
+      brand_voice: { tone: ["Bold"] },
+      brand_enabled: false,
+    });
+    expect(sent).toEqual({ brand_voice: { tone: ["Bold"] }, brand_enabled: false });
+  });
+
+  it("deleteBrand / deleteBrandSource / syncBrand address the right paths", async () => {
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/brand`)
+      .reply(200, envelope({ deleted: true, brand_assets: 2, source_materials: 1, logo: true }));
+    const del: any = await deleteBrand(mkClient(), "ws-1");
+    expect(del.brand_assets).toBe(2);
+
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/brand/sources/src-1`)
+      .reply(200, envelope({ deleted: true, id: "src-1", auto_reply_rules_affected: ["Shipping"] }));
+    const src: any = await deleteBrandSource(mkClient(), "ws-1", "src-1");
+    expect(src.auto_reply_rules_affected).toEqual(["Shipping"]);
+
+    nock(BASE)
+      .delete(`${PATH}/workspaces/ws-1/brand/sources/missing`)
+      .reply(404, { status: false, message: "nope", error_code: "BRAND_SOURCE_NOT_FOUND" });
+    await expect(deleteBrandSource(mkClient(), "ws-1", "missing")).rejects.toBeInstanceOf(NotFoundError);
+
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/brand/sync`)
+      .reply(200, envelope({ is_set_up: true }));
+    await syncBrand(mkClient(), "ws-1");
+    expect(nock.isDone()).toBe(true);
+  });
+
+  it("addBrandSources POSTs to /brand/sources and returns added + brand", async () => {
+    let sent: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/brand/sources`, (b) => {
+        sent = b;
+        return true;
+      })
+      .reply(201, envelope({ added: [{ id: "s1", type: "website", status: "synced" }], brand: { is_set_up: true } }));
+    const data: any = await addBrandSources(mkClient(), "ws-1", { website_url: "https://acme.coffee" });
+    expect(sent).toEqual({ website_url: "https://acme.coffee" });
+    expect(data.added[0].status).toBe("synced");
+    expect(data.brand.is_set_up).toBe(true);
+  });
+
+  it("post generation settings GET + PATCH", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/brand/post-generation-settings`)
+      .reply(200, envelope({ social_platform: null, language: "English", no_of_posts: 10 }));
+    const got: any = await getBrandPostSettings(mkClient(), "ws-1");
+    expect(got.social_platform).toBeNull();
+
+    let sent: any;
+    nock(BASE)
+      .patch(`${PATH}/workspaces/ws-1/brand/post-generation-settings`, (b) => {
+        sent = b;
+        return true;
+      })
+      .reply(200, envelope({ social_platform: "linkedin", no_of_posts: 5 }));
+    await updateBrandPostSettings(mkClient(), "ws-1", { social_platform: "linkedin", no_of_posts: 5 });
+    expect(sent).toEqual({ social_platform: "linkedin", no_of_posts: 5 });
   });
 });
 

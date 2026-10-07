@@ -1407,6 +1407,24 @@ The CLI wraps these endpoints from the ContentStudio v1 public API (plus the wor
 | DELETE | `/workspaces/{w}/share-links/{id}` | `planner-share-links:delete` |
 | POST   | `/workspaces/{w}/share-links/{id}/send-invitations` | `planner-share-links:send-invitations` |
 | GET    | `/workspaces/{w}/share-links/{id}/activity` | `planner-share-links:activity` |
+| GET    | `/workspaces/{w}/webhooks/event-types` | `webhooks:event-types` |
+| GET    | `/workspaces/{w}/webhooks` | `webhooks:list` |
+| POST   | `/workspaces/{w}/webhooks` | `webhooks:create` |
+| GET    | `/workspaces/{w}/webhooks/{id}` | `webhooks:get` |
+| PUT    | `/workspaces/{w}/webhooks/{id}` | `webhooks:update` / `webhooks:enable` / `webhooks:disable` |
+| DELETE | `/workspaces/{w}/webhooks/{id}` | `webhooks:delete` |
+| POST   | `/workspaces/{w}/webhooks/{id}/rotate-secret` | `webhooks:rotate-secret` |
+| GET    | `/workspaces/{w}/webhooks/{id}/deliveries` | `webhooks:deliveries` |
+| GET    | `/workspaces/{w}/brand` | `brand:get` |
+| POST   | `/workspaces/{w}/brand` | `brand:create` |
+| PATCH  | `/workspaces/{w}/brand` | `brand:update` |
+| DELETE | `/workspaces/{w}/brand` | `brand:delete` |
+| GET    | `/workspaces/{w}/brand/{section}` | `brand:section` |
+| POST   | `/workspaces/{w}/brand/sources` | `brand:source-add` |
+| DELETE | `/workspaces/{w}/brand/sources/{id}` | `brand:source-delete` |
+| POST   | `/workspaces/{w}/brand/sync` | `brand:sync` |
+| GET    | `/workspaces/{w}/brand/post-generation-settings` | `brand:post-settings` |
+| PATCH  | `/workspaces/{w}/brand/post-generation-settings` | `brand:post-settings-update` |
 | GET    | `/workspaces/{w}/labels` | `labels:list` |
 | GET    | `/workspaces/{w}/team-members` | `team:list` |
 | GET    | `/workspaces/{w}/media` | `media:list` |
@@ -1529,6 +1547,19 @@ contentstudio --json planner-share-links:list                                   
 contentstudio --json planner-share-links:create --name "Client Review" --plan <post_id>
 contentstudio --json planner-share-links:send-invitations <id> --email a@b.c --approval-option anyone
 contentstudio --json planner-share-links:activity <id> [--type comment]             # Client comments/actions
+
+# Webhooks (owned by your user — same list in every workspace; the workspace only pays the API credit)
+contentstudio --json webhooks:event-types
+contentstudio --json webhooks:create --url https://example.com/hook --event-type post.published --event-type post.failed   # prints the secret ONCE
+contentstudio --json webhooks:deliveries <id> --status failed                        # why did events stop?
+contentstudio --json webhooks:rotate-secret <id>                                     # old secret signs for 24h more
+
+# Brand Knowledge (one brand per workspace; create/source-add/sync run a ~2 min AI analysis)
+contentstudio --json brand:get
+contentstudio --json brand:create --website-url https://acme.coffee --social-account <account_id>
+contentstudio --json brand:update --brand-voice '{"tone":["Warm","Confident"]}'   # a list sent replaces that list
+contentstudio --json brand:source-add --file https://acme.coffee/brand-guide.pdf
+contentstudio --json brand:post-settings-update --social-platform linkedin --number-of-posts 5
 
 # Posts
 contentstudio --json posts:list [--status draft] [--date-from] [--date-to]         # List posts

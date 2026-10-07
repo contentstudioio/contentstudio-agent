@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- **Webhooks** — `webhooks:event-types` / `list` / `get` / `create` / `update` /
+  `enable` / `disable` / `delete` / `rotate-secret` / `deliveries`. Webhooks are
+  owned by the API key's user, so every workspace lists the same ones; the
+  workspace only decides whose API credits the call uses. The signing secret is
+  printed once, by `create` and `rotate-secret` only (the old secret keeps
+  signing for 24h after a rotate). `webhooks:deliveries` is the paginated
+  delivery log for diagnosing why events stopped arriving.
+- **Brand Knowledge** — `brand:get` / `section` / `create` / `update` / `delete` /
+  `source-add` / `source-delete` / `sync` / `post-settings` / `post-settings-update`,
+  backed by `/workspaces/{workspace_id}/brand`. `create`, `source-add` and `sync` run
+  the app's AI brand analysis synchronously (up to ~2 minutes), so they wait 180s
+  (`--timeout`) and are not auto-retried.
+
 ## 1.6.0 — content categories, approval workflows, planner share links, AI video (2026-09-17)
 
 The public API gained five surfaces; the CLI mirrors all of them.

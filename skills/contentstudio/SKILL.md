@@ -91,7 +91,7 @@ contentstudio workspaces:use <workspace_id>
 
 The CLI silently defaults to the active workspace (whatever was set by `workspaces:use`). That default is fine for **read-only** calls (`workspaces:list`, `accounts:list`, `posts:list`, `media:list`, etc.) — just use the active workspace.
 
-But for any **mutating** action — `accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `accounts:remove`, `posts:create`, `posts:update`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`, `workspaces:update`, `workspaces:delete`, `labels:create`, `labels:update`, `labels:delete`, `campaigns:create`, `campaigns:update`, `campaigns:delete`, `team:add`, `team:update`, `team:remove`, `categories:create`, `categories:update`, `categories:delete`, `categories:shuffle`, `category-slots:create`, `category-slots:update`, `category-slots:delete`, `approval-workflows:create`, `approval-workflows:update`, `approval-workflows:delete`, `approval-workflows:duplicate`, `approval-workflows:set-default`, `approval-workflows:remove-default`, `planner-share-links:create`, `planner-share-links:update`, `planner-share-links:delete`, `planner-share-links:send-invitations`, every `inbox:*` write (`inbox:send`, `inbox:comment-add`, `inbox:comment-delete`, `inbox:review-reply`, `inbox:update`, `inbox:tag-*`, …), and `ai-video:generate` / `ai-video:run-tool` / `ai-video:cancel-job` — you MUST confirm the workspace with the user first, even if a workspace is already active. Don't assume the active workspace is the one they want to mutate.
+But for any **mutating** action — `accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `accounts:remove`, `posts:create`, `posts:update`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`, `workspaces:update`, `workspaces:delete`, `labels:create`, `labels:update`, `labels:delete`, `campaigns:create`, `campaigns:update`, `campaigns:delete`, `team:add`, `team:update`, `team:remove`, `categories:create`, `categories:update`, `categories:delete`, `categories:shuffle`, `category-slots:create`, `category-slots:update`, `category-slots:delete`, `approval-workflows:create`, `approval-workflows:update`, `approval-workflows:delete`, `approval-workflows:duplicate`, `approval-workflows:set-default`, `approval-workflows:remove-default`, `planner-share-links:create`, `planner-share-links:update`, `planner-share-links:delete`, `planner-share-links:send-invitations`, `webhooks:create`, `webhooks:update`, `webhooks:enable`, `webhooks:disable`, `webhooks:delete`, `webhooks:rotate-secret`, `brand:create`, `brand:update`, `brand:delete`, `brand:source-add`, `brand:source-delete`, `brand:sync`, `brand:post-settings-update`, every `inbox:*` write (`inbox:send`, `inbox:comment-add`, `inbox:comment-delete`, `inbox:review-reply`, `inbox:update`, `inbox:tag-*`, …), and `ai-video:generate` / `ai-video:run-tool` / `ai-video:cancel-job` — you MUST confirm the workspace with the user first, even if a workspace is already active. Don't assume the active workspace is the one they want to mutate.
 
 > **AI video generation costs credits.** `ai-video:generate` and `ai-video:run-tool` submit a real (billed) job the moment they're called without `--dry-run` — run `ai-video:estimate` first when the flags support it, show the estimate/cost to the user, and `--dry-run` the actual call before running it for real. `ai-video:cancel-job` may also charge for partial work already consumed — don't cancel a job on the user's behalf without confirming.
 
@@ -180,9 +180,9 @@ Did the user say "all" / "every" / "complete list" / "every single"?
 ### Endpoints that paginate
 
 All `*:list` commands paginate:
-`workspaces:list`, `accounts:list`, `posts:list`, `comments:list`, `media:list`, `campaigns:list`, `categories:list`, `labels:list`, `team:list`, `approval-workflows:list`, `planner-share-links:list`, `ai-video:jobs`.
+`workspaces:list`, `accounts:list`, `posts:list`, `comments:list`, `media:list`, `campaigns:list`, `categories:list`, `labels:list`, `team:list`, `approval-workflows:list`, `planner-share-links:list`, `webhooks:deliveries`, `ai-video:jobs`.
 
-`category-slots:list` and `planner-share-links:activity` return everything in one shot and carry no `pagination` block — a category has a handful of slots, and activity answers its own `total`.
+`category-slots:list` and `planner-share-links:activity` return everything in one shot and carry no `pagination` block — a category has a handful of slots, and activity answers its own `total`. `webhooks:list` is likewise unpaginated (a user has at most 5 webhooks) and answers `{used, limit, data[]}`.
 
 Non-list commands (`auth:whoami`, `posts:create`, `posts:delete`, `media:upload`, `ai-video:tools`, `ai-video:models`, `ai-video:job`, etc.) never include `pagination` in their envelope.
 
@@ -453,7 +453,7 @@ Errors: 422 for unknown accounts or a workspace with no connected accounts; 502 
 - **`model_used` is not one of the `images:models` values** — it comes back provider-prefixed (`fal-ai/nano-banana-pro`, `pixelcut/background-removal`) and names the model that actually ran after any fallback. Report it; never compare it for equality with `--model`.
 - **`images:tools` `controls` describe the underlying tool, not the public payload.** Take `--resolution` / `--aspect-ratio` values from there, but a control with no matching flag cannot be sent at all — `upscale` lists `model` and `upscale_factor`, and neither is in the API's tool payload. Likewise `accepts_instructions: true` on `headshot` and `face-swap` is not reachable: only `images:product-image` has `--instructions`. Sending an unsupported field is dropped in silence, so it will look like it worked.
 - **`--dimensions`** is `square`, `square_hd`, `portrait_4_5` or `landscape_16_9`, text→image only. Exact pixels are the model's choice — read `width`/`height` back. Anything else is rejected by the CLI before the call.
-- **Brand knowledge is a boolean, read-only.** `--use-brand` on `images:generate` only; it is resolved server-side and no brand ID or brand content is ever accepted or returned. `--use-brand` with no brand profile is `brand_applied: false`, not an error — `images:brand` tells you in advance. **The tool commands and `images:generate --image-url` always report `brand_applied: false`** — edits and tools do not apply brand knowledge.
+- **Brand knowledge is a boolean here.** `--use-brand` on `images:generate` only; it is resolved server-side and no brand ID or brand content is accepted or returned by the image commands (read or edit the brand itself with the `brand:*` commands — see **Brand Knowledge**). `--use-brand` with no brand profile is `brand_applied: false`, not an error — `images:brand` tells you in advance. **The tool commands and `images:generate --image-url` always report `brand_applied: false`** — edits and tools do not apply brand knowledge.
 - **`--dry-run` on every generating command** prints the endpoint and body and calls nothing. Use it to show the user the prompt before spending a credit. The three discovery commands are reads and need no `--dry-run`.
 - **Rate limit: 30 requests/minute**, shared with the ContentStudio app's own AI usage on the same account. A `RateLimitError` here needs the full minute.
 - Video tools (`image-to-video`, `motion-control`, `lip-sync`, `talking-avatar`) are **not** on this API; asking for one is `NotFoundError` (`TOOL_NOT_FOUND`), same as an unknown key.
@@ -620,6 +620,123 @@ the scheduled **posts**, optionally letting them comment or approve.
 - `planner-share-links:activity` answers `{total, data[]}` newest-first, each entry `{type, post_id, name, email, comment, action, created_at}`. `--type` narrows to comments or actions; omit it for both.
 - Prefer `planner-share-links:update <id> --disabled` over `:delete` when a client engagement is only pausing — disabling is reversible, deleting is not.
 - Errors: `SHARE_LINK_NOT_FOUND` (404), `SHARE_LINK_TOKEN_REVOKE_FAILED` (422).
+
+### Webhooks
+
+Outbound webhooks push events (`post.published`, `post.failed`, `inbox.message.received`,
+`automation.bulk.completed`, …) to an https endpoint you own.
+
+**A webhook belongs to the API key's USER, not to a workspace.** Every workspace the user
+is a member of lists the same webhooks; a webhook created under workspace A is readable
+and editable under workspace B. The workspace (`--workspace` / active) only decides
+**whose API credits the call uses** — one credit per call. A workspace the user is not a
+member of answers 403. Each user can have **5 webhooks** (active and paused both count).
+
+| Command | Purpose |
+|---------|---------|
+| `webhooks:event-types` | Events you can subscribe to: `{value, label, group, description, payload_schema}`. Pass `value` to `--event-type` |
+| `webhooks:list` | Your webhooks, newest first, plus `used` / `limit` (5) |
+| `webhooks:get <webhook_id>` | Read one webhook |
+| `webhooks:create --url <https> --event-type <v>… [--name <n>] [--secret whsec_…] [--custom-headers '<json>']` | Create — prints the signing secret ONCE |
+| `webhooks:update <webhook_id> [--url] [--event-type <v>…] [--name] [--custom-headers '<json>'] [--status enabled\|disabled]` | Partial update |
+| `webhooks:disable <webhook_id>` / `webhooks:enable <webhook_id>` | Shorthand for `update --status disabled` / `--status enabled` |
+| `webhooks:delete <webhook_id>` | Delete a webhook |
+| `webhooks:rotate-secret <webhook_id>` | New signing secret, printed ONCE; the old one keeps signing for 24h |
+| `webhooks:deliveries <webhook_id> [--status all\|successful\|failed] [--event-type] [--from] [--to] [--search] [--page] [--per-page]` | Delivery log — the "why did events stop arriving" diagnostic |
+
+- **The secret is shown only by `create` and `rotate-secret`.** `list` / `get` / `update` return `has_secret` and nothing more. When you run either command, show the user `data.secret` immediately and tell them to store it now — it cannot be fetched again. Never paste it into anything else unprompted.
+- `--secret` is optional (`whsec_<base64>`); omit it and the backend generates one. `--dry-run` redacts a supplied secret.
+- **Create pings the URL first.** The URL must be https and publicly reachable: internal addresses are refused (`WEBHOOK_URL_NOT_ALLOWED`), and the endpoint must answer the ping with a 2xx within 5s (`WEBHOOK_PREFLIGHT_FAILED`). Make sure the receiver is live before creating. A new `--url` on update goes through the same check.
+- `--event-type` is repeatable → `event_types[]` (≥1 on create). On update it **replaces** the whole list — pass every event you want to keep.
+- `--custom-headers` is a JSON object of string values sent with every delivery, e.g. `'{"X-Tenant":"acme"}'`. It cannot override the signing or system headers.
+- `status` is `enabled`, `disabled` (paused by you) or `disabled_by_system` (ContentStudio paused it after 15 consecutive failed deliveries and emailed the owner). Resume either paused state with `webhooks:enable` — that also resets the failure count. You cannot set `disabled_by_system` yourself.
+- Prefer `webhooks:disable` over `webhooks:delete` when the pause is temporary — disabling is reversible, deleting is not.
+- **Rotation has a 24h grace window**: `previous_secret_expires_at` (ISO, or null if the webhook had no secret) is when the old secret stops signing. Tell the user to deploy the new secret to their receiver before then.
+- **"My webhook stopped receiving events"** → `webhooks:get` (check `status` and `last_delivery_status`), then `webhooks:deliveries <id> --status failed`. Each row is one event's latest attempt: `{event_id, event_type, outcome, response_status, duration_ms, is_test, created_at}`. `outcome` is `delivered` / `failed` / `retrying` / `skipped_out_of_credits` (not sent — the account's API credit pool ran out; successful deliveries cost one credit each, tests/pings are free). `response_status: null` means the endpoint was unreachable (DNS, TLS, refused, timeout). `--search` takes an exact event ID or part of an event type; `--from` / `--to` are ISO 8601 (no offset = UTC). Deliveries are kept 30 days.
+- Not available through the API: sending a test event, opening a single delivery's request/response bodies, and CSV export — those are in Settings → Webhooks in the web app.
+- Errors: `WEBHOOK_NOT_FOUND` (404 — includes webhooks owned by someone else), `VALIDATION_ERROR` (422), `WEBHOOK_LIMIT_REACHED` (422 — already 5), `WEBHOOK_URL_NOT_ALLOWED` (422), `WEBHOOK_PREFLIGHT_FAILED` (422), `WEBHOOK_REQUEST_FAILED` (500), `API_ACCESS_NOT_ALLOWED` / `API_CREDIT_LIMIT_EXCEEDED` (403), `RATE_LIMIT_EXCEEDED` (429).
+
+### Brand Knowledge
+
+The workspace's **brand** — the app's Brand Knowledge editor (Brand Style, Brand Profile,
+Brand Voice, Source Materials, Media Assets). ContentStudio's AI (composer, inbox, RSS,
+Evergreen, AI images with `--use-brand`) resolves it server-side; nothing here passes brand
+content into a generation request. **One brand per workspace.** Any workspace member can
+read and edit it, and edits show in the app immediately.
+
+| Command | Purpose |
+|---------|---------|
+| `brand:get` | The brand object. No brand → `is_set_up: false`, empty sections, null timestamps (a 200, not an error) |
+| `brand:section <style\|profile\|voice>` | One part: `{schema_version, is_set_up, brand_<section>, updated_at}` |
+| `brand:create [--website-url] [--text] [--file <https>…] [--files '<json>'] [--social-account <id>…] [--timeout <s>]` | Build the brand by AI analysis ("Build My Brand Knowledge"). 201 |
+| `brand:update [--brand-style '<json>'] [--brand-profile '<json>'] [--brand-voice '<json>'] [--brand-enabled \| --no-brand-enabled]` | Partial update (PATCH). Creates the brand by hand, without analysis, if none |
+| `brand:delete` | Permanently delete the brand, its brand-asset media, logo and source files |
+| `brand:source-add` (same source flags as `create`) | Add source materials and AI-blend each into the existing brand. 201 `{added[], brand}` |
+| `brand:source-delete <source_id>` | Delete one source (and the brand assets it produced) |
+| `brand:sync [--timeout <s>]` | Re-analyse ALL sources and overwrite style/profile/voice (the app's Sync — no source id) |
+| `brand:post-settings` | AI Content Library post-generation defaults |
+| `brand:post-settings-update [--social-platform] [--language] [--post-type] [--number-of-posts 1-10] [--caption-length 20-200] [--emoji-usage] [--hashtag-usage] [--aspect-ratio] [--image-style]` | Partial update of those defaults |
+
+**Sources** (`brand:create`, `brand:source-add`; at least one): `--website-url` → `website_url`;
+`--text` → `text` (≤10000 chars); `--file <url>` (repeatable) and/or `--files
+'[{"url":"https://…/guide.pdf","name":"Brand guide"}]'` → `files` (≤50 public **https** PDF / DOCX /
+TXT / Markdown, `name` ≤255); `--social-account <id>` (repeatable) → `social_accounts` — the `id`
+from `accounts:list`, which must be a connected account of this workspace on facebook, twitter,
+instagram, linkedin, pinterest, telegram, youtube, tiktok, tumblr, gmb or bluesky (otherwise a 422
+on `social_accounts` naming the id).
+
+- **Slow, synchronous analysis.** `brand:create`, `brand:source-add` and `brand:sync` wait for the
+  AI analysis — up to ~2 minutes (per source for `source-add`). The CLI waits 180s by default
+  (`--timeout` to change) and does **not** auto-retry them. Tell the user it will take a while.
+- **`brand:create` only works once.** A workspace that already has a brand answers `409
+  BRAND_ALREADY_EXISTS` and runs nothing — `brand:get` first; to change an existing brand use
+  `brand:update`, to feed it more material use `brand:source-add`. Brand assets the analysis
+  discovers arrive in the background shortly after the 201. No credits are consumed.
+- **`brand:update` (PATCH) semantics:** only the fields sent change; a **list sent replaces that
+  list** (to add a tone: `brand:get`, append, send the whole list); `null` / `""` clears a text
+  field; **unknown keys are rejected** (422). Fields:
+  - `--brand-style` → `brand_style` `{logo, colors, title_font, body_font, visual_identity_description}`.
+    `logo` is an http(s) URL, or `""` / `null` to clear; a ContentStudio storage URL is accepted
+    only if it is the current logo or a file in this workspace's media library. `colors` is ≤6
+    `{hex: "#RRGGBB", role: brand|background|text|accent}` with at most one each of
+    `brand` / `background` / `text`.
+  - `--brand-profile` → `brand_profile` `{business_name, core_identity, market_positioning}`
+    (strings ≤10000) + `{competitors, competitive_advantages, primary_customer_segments,
+    primary_value_drivers}` (string lists, entries ≤200).
+  - `--brand-voice` → `brand_voice` `{purpose, audience, voice_description}` (strings ≤10000) +
+    `{tone, emotion, character, language}` (free-text lists, entries ≤200; common tones:
+    Professional, Confident, Approachable, Warm, Friendly…).
+  - `--brand-enabled` / `--no-brand-enabled` → `brand_enabled` — whether AI generation uses the brand.
+- **Source statuses:** each source is `pending`, `synced` (analysed into the brand) or
+  `unreachable` (the analysis could not use it — it is kept anyway). A brand holds at most **50
+  sources** (422 on `source_materials`). If `brand:source-add` fails part-way
+  (`BRAND_SOURCE_ADD_FAILED`), the sources already added stay — `brand:get` to see them.
+- **`brand:source-delete`** returns `auto_reply_rules_affected` — inbox auto-reply rules that used
+  the document as guidance and were detached. Tell the user about them.
+- **`brand:sync` overwrites** the style, profile and voice from the sources — hand edits made
+  with `brand:update` are lost. Confirm before running it.
+- **`brand:delete` is permanent** (brand, brand-asset media, logo, source files; posts already
+  generated are kept). Always `--dry-run` first and get explicit confirmation. Prefer
+  `brand:update --no-brand-enabled` when the user only wants AI to stop using the brand.
+- **Post settings** (`brand:post-settings-update`): `--social-platform` instagram | facebook |
+  twitter | telegram | tiktok | gmb | threads | bluesky | linkedin | tumblr — **must be stored or
+  sent before anything saves** (422 on `social_platform`; `brand:post-settings` shows
+  `social_platform: null` when unset). `--language` English, Spanish, French, Portuguese, German,
+  Italian, Dutch, Turkish, Indonesian, Tagalog, Swedish, Danish, Norwegian, Romanian, Polish,
+  Finnish, Hungarian, Greek, Czech, Malay, Vietnamese, "Chinese (Simplified)", "Chinese
+  (Traditional)". `--post-type` image | text | text_image. `--emoji-usage` / `--hashtag-usage`
+  none | low | medium | high. `--aspect-ratio` 8:1, 4:1, 21:9, 16:9, 3:2, 4:3, 5:4, 1:1, 4:5,
+  3:4, 2:3, 9:16, 1:4, 1:8. `--image-style` none, abstract, oil-painting, neon-punk, app-icon,
+  black-white, bokeh, cartoon, cinematic, cyberpunk, digital-watercolor, film-noir, film-poster,
+  flat-design, futuristic, grunge, highly-detailed, isometric, minimalistic, photorealistic,
+  pixel-art, polaroid, pop-art, retro-80s, steampunk, sticker, super-realistic, surrealism,
+  tattoo, unreal-engine, vaporwave. `--number-of-posts` → `no_of_posts`. Only the fields sent
+  change; creates the brand if the workspace has none.
+- Errors: `BRAND_NOT_FOUND` (404 — delete / source-add / source-delete / sync with no brand),
+  `BRAND_SOURCE_NOT_FOUND` (404), `BRAND_ALREADY_EXISTS` (409), `VALIDATION_ERROR` (422, with
+  `errors: {field: [msg]}`), `BRAND_INSUFFICIENT_CONTENT` (422 — the sources held too little
+  text, e.g. social accounts with no posts), `BRAND_SOURCE_ADD_FAILED` (422),
+  `BRAND_ANALYSIS_FAILED` (502 — nothing saved; retry).
 
 ### Labels (write)
 
@@ -1561,7 +1678,11 @@ contentstudio --json inbox:tag-attach <element_ref> \
    `CONTENT_CATEGORY_SLOT_NOT_FOUND`, `CONTENT_CATEGORY_SLOT_DUPLICATE`,
    `APPROVAL_WORKFLOW_NOT_FOUND`, `CANNOT_SET_DRAFT_AS_DEFAULT`,
    `REQUIRES_FORCE_DELETE`, `CASCADE_JOB_NOT_FOUND`, `SHARE_LINK_NOT_FOUND`,
-   `SHARE_LINK_TOKEN_REVOKE_FAILED`, `RATE_LIMIT_EXCEEDED`.
+   `SHARE_LINK_TOKEN_REVOKE_FAILED`, `WEBHOOK_NOT_FOUND`, `WEBHOOK_LIMIT_REACHED`,
+   `WEBHOOK_URL_NOT_ALLOWED`, `WEBHOOK_PREFLIGHT_FAILED`, `WEBHOOK_REQUEST_FAILED`,
+   `BRAND_NOT_FOUND`, `BRAND_SOURCE_NOT_FOUND`, `BRAND_ALREADY_EXISTS`,
+   `BRAND_INSUFFICIENT_CONTENT`, `BRAND_SOURCE_ADD_FAILED`, `BRAND_ANALYSIS_FAILED`,
+   `API_ACCESS_NOT_ALLOWED`, `API_CREDIT_LIMIT_EXCEEDED`, `RATE_LIMIT_EXCEEDED`.
 
 Two success shapes are also worth not mistaking for failures: a 200 carrying
 `next_slot: null` (`category-slots:next`) and a 200 carrying
