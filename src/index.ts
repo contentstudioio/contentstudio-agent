@@ -14,6 +14,7 @@ import { hideBin } from "yargs/helpers";
 
 import { VERSION } from "./api";
 import { registerAiVideo } from "./commands/aiVideo";
+import { registerCarousels } from "./commands/carousels";
 import { registerAnalytics } from "./commands/analytics";
 import { registerAnalyticsReports } from "./commands/analyticsReports";
 import { registerApprovalWorkflows } from "./commands/approvalWorkflows";
@@ -80,5 +81,6 @@ cli = registerInbox(cli);
 cli = registerAnalytics(cli);
 cli = registerAnalyticsReports(cli);
 cli = registerAiVideo(cli);
+cli = registerCarousels(cli);
 
 cli.parse();

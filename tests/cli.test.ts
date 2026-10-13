@@ -1096,3 +1096,89 @@ describe("posts:create repeat is gated to --publish-type scheduled", () => {
     expect(scheduling.publish_type).toBe("scheduled");
   });
 });
+
+describe("carousels commands", () => {
+  function withCfg() {
+    fs.writeFileSync(
+      cfgFile,
+      JSON.stringify({ api_key: "cs_INVALID", active_workspace_id: "ws-1" }),
+    );
+    return { CONTENTSTUDIO_CONFIG_PATH: cfgFile };
+  }
+
+  it("lists every carousel command in --help", () => {
+    const r = run(["--help"], { CONTENTSTUDIO_CONFIG_PATH: cfgFile });
+    for (const cmd of [
+      "carousels:templates",
+      "carousels:estimate",
+      "carousels:generate",
+      "carousels:edit",
+    ]) {
+      expect(r.stdout, cmd).toContain(cmd);
+    }
+  });
+
+  it("carousels:generate --dry-run builds a template body and hits no network", () => {
+    const r = run(
+      ["--json", "carousels:generate", "--prompt", "5 tips", "--template", "clean-minimal", "--slides", "6", "--size", "square", "--dry-run"],
+      withCfg(),
+    );
+    expect(r.code).toBe(0);
+    const d = JSON.parse(r.stdout);
+    expect(d.data.endpoint).toBe("POST /workspaces/ws-1/ai/carousels/generate");
+    expect(d.data.body).toEqual({
+      prompt: "5 tips",
+      slide_count: 6,
+      size: "square",
+      style: { mode: "template", template_id: "clean-minimal" },
+    });
+  });
+
+  it("a description or a reference makes the style custom", () => {
+    const r = run(
+      ["--json", "carousels:generate", "--prompt", "x", "--description", "neon", "--reference", "m1", "--no-brand-colours", "--dry-run"],
+      withCfg(),
+    );
+    expect(JSON.parse(r.stdout).data.body.style).toEqual({
+      mode: "custom",
+      description: "neon",
+      references: ["m1"],
+      brand_colours: false,
+    });
+  });
+
+  it("no style flags leave the look to the AI", () => {
+    const r = run(["--json", "carousels:generate", "--prompt", "x", "--dry-run"], withCfg());
+    expect(JSON.parse(r.stdout).data.body).toEqual({ prompt: "x" });
+  });
+
+  it("refuses a template together with a custom description", () => {
+    const r = run(["--json", "carousels:generate", "--prompt", "x", "--template", "a", "--description", "b"], withCfg());
+    expect(r.code).not.toBe(0);
+    expect(JSON.parse(r.stdout).error.type).toBe("ConfigError");
+  });
+
+  it("refuses more than two references", () => {
+    const r = run(
+      ["--json", "carousels:generate", "--prompt", "x", "--reference", "a", "--reference", "b", "--reference", "c"],
+      withCfg(),
+    );
+    expect(r.code).not.toBe(0);
+  });
+
+  it("the job commands are gone: generate answers with the deck", () => {
+    const r = run(["--help"], { CONTENTSTUDIO_CONFIG_PATH: cfgFile });
+    expect(r.stdout).not.toContain("carousels:job");
+    expect(r.stdout).not.toContain("carousels:cancel");
+  });
+
+  it("carousels:edit --dry-run names the carousel and the slide", () => {
+    const r = run(
+      ["--json", "carousels:edit", "crs_1", "--instruction", "shorter", "--slide", "2", "--dry-run"],
+      withCfg(),
+    );
+    const d = JSON.parse(r.stdout);
+    expect(d.data.endpoint).toBe("POST /workspaces/ws-1/ai/carousels/crs_1/edit");
+    expect(d.data.body).toEqual({ instruction: "shorter", slide: 2 });
+  });
+});

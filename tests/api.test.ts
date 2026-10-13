@@ -12,6 +12,10 @@ import {
   attachInboxTags,
   bulkUpdateInboxElements,
   cancelAiVideoJob,
+  editAiCarousel,
+  estimateAiCarousel,
+  generateAiCarousel,
+  listAiCarouselTemplates,
   deleteInboxComment,
   deleteInboxMessage,
   deleteInboxTags,
@@ -2081,3 +2085,59 @@ function limitsPayload() {
     },
   };
 }
+
+describe("AI carousels", () => {
+  it("listAiCarouselTemplates unwraps the templates", async () => {
+    nock(BASE)
+      .get(`${PATH}/workspaces/ws-1/ai/carousels/templates`)
+      .reply(200, envelope({ templates: [{ id: "clean-minimal", name: "Clean Minimal" }] }));
+    const data: any = await listAiCarouselTemplates(mkClient(), "ws-1");
+    expect(data.templates[0].id).toBe("clean-minimal");
+  });
+
+  it("estimateAiCarousel posts the options and returns the range", async () => {
+    let sent: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/ai/carousels/estimate`, (body) => {
+        sent = body;
+        return true;
+      })
+      .reply(200, envelope({ credits: { min: 8, max: 38 }, route_known: false }));
+    const data: any = await estimateAiCarousel(mkClient(), "ws-1", { prompt: "5 tips", slide_count: 6 });
+    expect(sent).toEqual({ prompt: "5 tips", slide_count: 6 });
+    expect(data.credits).toEqual({ min: 8, max: 38 });
+  });
+
+  it("generateAiCarousel returns the finished deck", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/ai/carousels/generate`)
+      .reply(200, envelope({ carousel_id: "crs_1", slides: [{ position: 1, media_id: "m1" }], caption: "c" }));
+    const data: any = await generateAiCarousel(mkClient(), "ws-1", {
+      prompt: "5 tips",
+      style: { mode: "template", template_id: "clean-minimal" },
+    });
+    expect(data).toMatchObject({ carousel_id: "crs_1", caption: "c" });
+    expect(data.slides[0].media_id).toBe("m1");
+  });
+
+  it("editAiCarousel posts to the carousel", async () => {
+    let sent: any;
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/ai/carousels/crs_1/edit`, (body) => {
+        sent = body;
+        return true;
+      })
+      .reply(200, envelope({ carousel_id: "crs_1", slides: [], caption: "c" }));
+    await editAiCarousel(mkClient(), "ws-1", "crs_1", { instruction: "shorter", slide: 2 });
+    expect(sent).toEqual({ instruction: "shorter", slide: 2 });
+  });
+
+  it("an unknown template is a ValidationError", async () => {
+    nock(BASE)
+      .post(`${PATH}/workspaces/ws-1/ai/carousels/generate`)
+      .reply(422, { status: false, message: "Unknown template_id.", error_code: "UNKNOWN_TEMPLATE" });
+    await expect(
+      generateAiCarousel(mkClient(), "ws-1", { prompt: "x", style: { mode: "template", template_id: "nope" } }),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+});
