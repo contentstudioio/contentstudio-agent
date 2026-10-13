@@ -3249,6 +3249,9 @@ export const IMAGE_DIMENSIONS = [
   "landscape_16_9",
 ] as const;
 
+/** `image_background` values. Only some models honor it (gpt-image-2.5-flare / -sunburst). */
+export const IMAGE_BACKGROUNDS = ["auto", "opaque", "transparent"] as const;
+
 /** Max lengths the API enforces, checked client-side to save a request credit. */
 export const MAX_IMAGE_PROMPT = 1000;
 export const MAX_IMAGE_URL = 2048;
@@ -3261,6 +3264,8 @@ export interface ImageGenerateBody {
   use_brand?: boolean;
   dimensions?: string;
   enhance_prompt?: boolean;
+  /** `auto` | `opaque` | `transparent`. Only honored by models that support it (the GPT Image 2.5 models). */
+  image_background?: string;
 }
 
 /** The shared `data` of both generation POSTs. Every field but the two booleans is nullable. */
@@ -3343,10 +3348,18 @@ export async function listImageTools(c: Client, workspaceId: string) {
   return (data?.tools ?? []) as any[];
 }
 
-/** GET the model identifiers `generate` accepts. */
+/** One `images:models` entry. Older servers returned bare key strings. */
+export interface ImageModelInfo {
+  key: string;
+  credits_per_image?: number;
+  supported_backgrounds?: string[];
+  max_input_images?: number | null;
+}
+
+/** GET the models `generate` accepts (a key string, or an object carrying `key` and capabilities). */
 export async function listImageModels(c: Client, workspaceId: string) {
   const data = await c.get<any>(`/workspaces/${workspaceId}/ai/images/models`);
-  return (data?.models ?? []) as string[];
+  return (data?.models ?? []) as Array<string | ImageModelInfo>;
 }
 
 /** GET whether `--use-brand` will actually apply anything. Never returns brand content. */

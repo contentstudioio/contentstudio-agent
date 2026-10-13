@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — GPT Image 2.5 (Flare and Sunburst)
+
+- `images:generate --background <auto|opaque|transparent>` sends `image_background`.
+  Only `gpt-image-2.5-flare` and `gpt-image-2.5-sunburst` honor it; other models ignore it.
+- New image models `gpt-image-2.5-flare` (3 credits per image) and
+  `gpt-image-2.5-sunburst` (5). Both generate and edit (`--image-url`).
+- `images:models` now renders the server's per-model entries (`credits_per_image`,
+  supported backgrounds) instead of printing `[object Object]`.
+
 ## 1.6.0 — content categories, approval workflows, planner share links, AI video (2026-09-17)
 
 The public API gained five surfaces; the CLI mirrors all of them.
