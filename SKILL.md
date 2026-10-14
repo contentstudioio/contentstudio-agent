@@ -1,6 +1,6 @@
 ---
 name: contentstudio
-description: ContentStudio is a tool to schedule social-media posts, manage the social inbox, and pull performance analytics across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile. Use when the user wants to list/create/delete/approve posts, find the best time to post, generate or edit images with AI, read and reply to DMs, comments and reviews, manage media, audit workspaces, accounts, campaigns, labels, categories, or team-members, or pull analytics reports (top posts, engagement, impressions, follower growth, AI insights, etc.) on their ContentStudio account.
+description: ContentStudio is a tool to schedule social-media posts, manage the social inbox, and pull performance analytics across Facebook, LinkedIn, Twitter/X, Instagram, YouTube, TikTok, Pinterest, Threads, Tumblr, Bluesky, and Google Business Profile. Use when the user wants to list/create/delete/approve posts, find the best time to post, generate or edit images and carousels with AI, read and reply to DMs, comments and reviews, manage media, audit workspaces, accounts, campaigns, labels, categories, or team-members, or pull analytics reports (top posts, engagement, impressions, follower growth, AI insights, etc.) on their ContentStudio account.
 version: 1.5.0
 homepage: https://api.contentstudio.io/guide
 metadata: {"openclaw":{"emoji":"📅","requires":{"bins":["contentstudio"],"env":["CONTENTSTUDIO_API_KEY"]}}}
@@ -91,9 +91,11 @@ contentstudio workspaces:use <workspace_id>
 
 The CLI silently defaults to the active workspace (whatever was set by `workspaces:use`). That default is fine for **read-only** calls (`workspaces:list`, `accounts:list`, `posts:list`, `media:list`, etc.) — just use the active workspace.
 
-But for any **mutating** action — `accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `accounts:remove`, `posts:create`, `posts:update`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`, `workspaces:update`, `workspaces:delete`, `labels:create`, `labels:update`, `labels:delete`, `campaigns:create`, `campaigns:update`, `campaigns:delete`, `team:add`, `team:update`, `team:remove`, `categories:create`, `categories:update`, `categories:delete`, `categories:shuffle`, `category-slots:create`, `category-slots:update`, `category-slots:delete`, `approval-workflows:create`, `approval-workflows:update`, `approval-workflows:delete`, `approval-workflows:duplicate`, `approval-workflows:set-default`, `approval-workflows:remove-default`, `planner-share-links:create`, `planner-share-links:update`, `planner-share-links:delete`, `planner-share-links:send-invitations`, every `inbox:*` write (`inbox:send`, `inbox:comment-add`, `inbox:comment-delete`, `inbox:review-reply`, `inbox:update`, `inbox:tag-*`, …), and `ai-video:generate` / `ai-video:run-tool` / `ai-video:cancel-job` — you MUST confirm the workspace with the user first, even if a workspace is already active. Don't assume the active workspace is the one they want to mutate.
+But for any **mutating** action — `accounts:connect`, `accounts:add-bluesky`, `accounts:add-facebook-group`, `accounts:remove`, `posts:create`, `posts:update`, `posts:delete`, `posts:approve`, `posts:reject`, `comments:add`, `media:upload`, `workspaces:update`, `workspaces:delete`, `labels:create`, `labels:update`, `labels:delete`, `campaigns:create`, `campaigns:update`, `campaigns:delete`, `team:add`, `team:update`, `team:remove`, `categories:create`, `categories:update`, `categories:delete`, `categories:shuffle`, `category-slots:create`, `category-slots:update`, `category-slots:delete`, `approval-workflows:create`, `approval-workflows:update`, `approval-workflows:delete`, `approval-workflows:duplicate`, `approval-workflows:set-default`, `approval-workflows:remove-default`, `planner-share-links:create`, `planner-share-links:update`, `planner-share-links:delete`, `planner-share-links:send-invitations`, every `inbox:*` write (`inbox:send`, `inbox:comment-add`, `inbox:comment-delete`, `inbox:review-reply`, `inbox:update`, `inbox:tag-*`, …), `ai-video:generate` / `ai-video:run-tool` / `ai-video:cancel-job`, and `carousels:generate` / `carousels:edit` — you MUST confirm the workspace with the user first, even if a workspace is already active. Don't assume the active workspace is the one they want to mutate.
 
 > **AI video generation costs credits.** `ai-video:generate` and `ai-video:run-tool` submit a real (billed) job the moment they're called without `--dry-run` — run `ai-video:estimate` first when the flags support it, show the estimate/cost to the user, and `--dry-run` the actual call before running it for real. `ai-video:cancel-job` may also charge for partial work already consumed — don't cancel a job on the user's behalf without confirming.
+
+> **AI carousels cost image credits.** `carousels:generate` and `carousels:edit` make a real (billed) carousel without `--dry-run`. Run `carousels:estimate` first and show the user the cost: a template has one price, any other style is a `{min, max}` range and generate never charges more than `max`. A failed request charges nothing.
 
 > **Inbox writes are customer-facing.** `inbox:send`, `inbox:comment-add`, and `inbox:review-reply` publish text to a real person on a real social platform, and there is no undo on the provider side. Always `--dry-run` first, show the exact message text to the user, and get explicit approval before sending. Never compose-and-send a reply to a customer in one step.
 
@@ -184,7 +186,7 @@ All `*:list` commands paginate:
 
 `category-slots:list` and `planner-share-links:activity` return everything in one shot and carry no `pagination` block — a category has a handful of slots, and activity answers its own `total`.
 
-Non-list commands (`auth:whoami`, `posts:create`, `posts:delete`, `media:upload`, `ai-video:tools`, `ai-video:models`, `ai-video:job`, etc.) never include `pagination` in their envelope.
+Non-list commands (`auth:whoami`, `posts:create`, `posts:delete`, `media:upload`, `ai-video:tools`, `ai-video:models`, `ai-video:job`, `carousels:*`, etc.) never include `pagination` in their envelope.
 
 ---
 
@@ -492,6 +494,34 @@ Errors: 422 for unknown accounts or a workspace with no connected accounts; 502 
 - `ai-video:cancel-job` 409s (`ConflictError`) with `JOB_ALREADY_TERMINAL` if the job already finished, failed, or was cancelled — check `ai-video:job <job_id>` first if unsure.
 
 **Errors specific to AI Video** (in addition to the standard table below): 403 `INSUFFICIENT_VIDEO_CREDITS` (not enough credits — surfaces as `AuthError`), 403 `STORAGE_LIMIT_EXCEEDED` (surfaces as `AuthError`), 404 `TOOL_NOT_FOUND` / `JOB_NOT_FOUND` (`NotFoundError`), 409 `JOB_ALREADY_TERMINAL` (`ConflictError`), 502 `AI_SERVICE_UNAVAILABLE` / 504 `AI_SERVICE_TIMEOUT` (`BackendError` — safe to retry after a short backoff).
+
+### AI Carousels
+
+A carousel is an ordered set of slides plus one caption, made with the same templates and options as AI chat. Like `images:generate`, `generate` and `edit` answer when the deck is done: about 25 seconds for a template, up to about 3 minutes for a deck the AI draws. Tell the user it may take a few minutes.
+
+| Command | Purpose |
+|---------|---------|
+| `carousels:templates` | Every template: `id`, `name`, `best_for`, `sizes`, `preview_url` (the cover as a PNG), `preview_html_url` (the same cover as HTML) |
+| `carousels:estimate --prompt "..." [style flags]` | Credits as `{min, max}`. Nothing generated or charged |
+| `carousels:generate --prompt "..." [--slides 3-10] [--size portrait\|square] [--template <id> \| --description "..." --reference <media_id\|url> (repeatable, max 2)] [--no-brand-colours] [--use-brand\|--no-use-brand] [--language] [--dry-run]` | Generate a carousel. Prints the slides' media IDs and the caption |
+| `carousels:edit <carousel_id> --instruction "..." [--slide <n>] [--dry-run]` | One plain-language change to a finished carousel (within 7 days) |
+
+**Style:** `--template` is a library template. `--description` and/or `--reference` is a custom look (the AI picks how to make it). Neither lets the AI choose the look. `--template` with `--description`/`--reference` is a `ConfigError`. `--no-brand-colours` keeps the template's own colours (the logo stays when brand is on). Omitting `--use-brand` follows the workspace's brand setting.
+
+**Result:** `carousel_id`, `slides[]` in order (`position`, `media_id`, `url`, `width`, `height`, each already in the media library), `caption`, `style`, `credits` (charged), `failed_slots` (slides that could not be drawn; only delivered slides are charged).
+
+**Generate and schedule a carousel:**
+
+```bash
+contentstudio carousels:estimate --prompt "5 tips for better LinkedIn headlines" --template clean-minimal --slides 6
+contentstudio --json carousels:generate --prompt "5 tips for better LinkedIn headlines" --template clean-minimal --slides 6
+# take data.slides[].media_id and data.caption from the output, then:
+contentstudio posts:create --account <linkedin_account_id> --post-type carousel \
+  --content "<data.caption>" --media-id <id1> --media-id <id2> --media-id <id3> \
+  --publish-type scheduled --scheduled-at "2026-10-16 09:00:00"
+```
+
+**Errors:** 422 `VALIDATION_ERROR` (e.g. `--slides` outside 3–10) / `UNKNOWN_TEMPLATE` / `TOO_MANY_REFERENCES` / `REFERENCE_UNREADABLE` / `SLIDE_COUNT_OUT_OF_RANGE` / `STYLE_FIELDS_CONFLICT` (`ValidationError`; the CLI picks the mode from the flags, so it never sends a conflict), 422 `PROMPT_NEEDS_DETAIL` (the prompt gave no subject: ask the user and generate again), 422 `EDIT_NOT_APPLIED` (the instruction changed nothing) / `EDIT_NEEDS_NEW_CAROUSEL` (a different template is a new `carousels:generate`), 403 `IMAGE_CREDIT_LIMIT_EXCEEDED` (`AuthError`), 404 `CAROUSEL_NOT_FOUND` (not in this workspace, or older than 7 days), 429 `CAROUSEL_REQUESTS_LIMIT` (too many being made in this workspace at once: wait for one), 502 `CAROUSEL_GENERATION_FAILED` / `AI_SERVICE_UNAVAILABLE` / `MEDIA_PERSISTENCE_FAILED` and 504 `AI_SERVICE_TIMEOUT` (safe to retry; a failed request charges nothing), 507 `MEDIA_STORAGE_LIMIT_EXCEEDED`. Never retry a generate that timed out on your side without checking the media library: the carousel may have been made and charged.
 
 ### Lookup tables (read)
 

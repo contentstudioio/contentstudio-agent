@@ -1049,6 +1049,25 @@ A `403` with no `error_code` is a membership or API-request-credit problem and s
 
 Video tools (`image-to-video`, `motion-control`, `lip-sync`, `talking-avatar`) are not exposed on this API — they answer `TOOL_NOT_FOUND` like an unknown key. Sample workspaces are read-only: the three discovery commands work, generation returns `403`.
 
+## AI Carousels
+
+An ordered set of slides plus one caption, made with the same templates and options as AI chat.
+`generate` and `edit` answer when the deck is done (up to about 3 minutes), like `images:generate`.
+
+```bash
+contentstudio carousels:templates
+contentstudio carousels:estimate --prompt "5 tips for better LinkedIn headlines" --template clean-minimal --slides 6
+contentstudio carousels:generate --prompt "5 tips for better LinkedIn headlines" --template clean-minimal --slides 6
+contentstudio carousels:generate --prompt "Our autumn menu" --description "warm, hand-drawn" --reference <media_id>
+contentstudio carousels:edit <carousel_id> --instruction "make the headline shorter" --slide 1
+```
+
+The result lists each slide's `media_id` (already in the media library) and the caption.
+Schedule it with `posts:create --post-type carousel --content "<caption>" --media-id <id> ...`.
+
+A template has one price; any other style is a `{min, max}` range, and generate never charges more
+than `max`. A failed request charges nothing.
+
 ## Platform-Specific Examples
 
 The full body schema accepts platform-specific options. These examples show the most common configurations.
@@ -1447,6 +1466,10 @@ The CLI wraps these endpoints from the ContentStudio v1 public API (plus the wor
 | GET    | `/workspaces/{w}/ai/jobs` | `ai-video:jobs` |
 | GET    | `/workspaces/{w}/ai/jobs/{job_id}` | `ai-video:job <job_id>` |
 | DELETE | `/workspaces/{w}/ai/jobs/{job_id}` | `ai-video:cancel-job <job_id>` |
+| GET    | `/workspaces/{w}/ai/carousels/templates` | `carousels:templates` |
+| POST   | `/workspaces/{w}/ai/carousels/estimate` | `carousels:estimate` |
+| POST   | `/workspaces/{w}/ai/carousels/generate` | `carousels:generate` |
+| POST   | `/workspaces/{w}/ai/carousels/{carousel_id}/edit` | `carousels:edit <carousel_id>` |
 
 Full OpenAPI 3.0 spec: <https://api.contentstudio.io/api-docs.json>
 Human-readable docs: <https://api.contentstudio.io/guide>

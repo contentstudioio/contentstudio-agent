@@ -9,6 +9,16 @@
 - `images:models` now renders the server's per-model entries (`credits_per_image`,
   supported backgrounds) instead of printing `[object Object]`.
 
+## Unreleased — AI carousels
+
+- **AI carousels** (CONT-4215) — `carousels:templates`, `carousels:estimate`,
+  `carousels:generate` and `carousels:edit`. The style follows the flags:
+  `--template` is a library template, `--description` / `--reference` (max 2) a
+  custom look, neither lets the AI choose. Like `images:generate`, `generate` and
+  `edit` answer when the deck is done (a 300s timeout, never retried, since each
+  call is billed) and print the slide media IDs and caption, ready for
+  `posts:create --post-type carousel`.
+
 ## 1.6.0 — content categories, approval workflows, planner share links, AI video (2026-09-17)
 
 The public API gained five surfaces; the CLI mirrors all of them.

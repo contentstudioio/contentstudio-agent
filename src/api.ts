@@ -2434,6 +2434,66 @@ export function cancelAiVideoJob(c: Client, workspaceId: string, jobId: string) 
   return c.delete<any>(`/workspaces/${workspaceId}/ai/jobs/${seg(jobId)}`);
 }
 
+// ── AI carousels ──────────────────────────────────────────
+
+export interface AiCarouselStyle {
+  mode?: "auto" | "template" | "custom";
+  template_id?: string;
+  description?: string;
+  /** Up to 2: workspace media IDs or public image URLs. */
+  references?: string[];
+  brand_colours?: boolean;
+}
+
+export interface AiCarouselBody {
+  prompt: string;
+  slide_count?: number;
+  size?: "portrait" | "square";
+  language?: string;
+  use_brand?: boolean;
+  style?: AiCarouselStyle;
+}
+
+export interface AiCarouselEditBody {
+  instruction: string;
+  slide?: number;
+  language?: string;
+  use_brand?: boolean;
+}
+
+/** GET /workspaces/{w}/ai/carousels/templates — every template, with a cover preview URL. */
+export function listAiCarouselTemplates(c: Client, workspaceId: string) {
+  return c.get<any>(`/workspaces/${workspaceId}/ai/carousels/templates`);
+}
+
+/**
+ * POST /workspaces/{w}/ai/carousels/estimate — credits as {min, max}. Nothing is generated or
+ * charged; a template has one price, any other style a range generate never exceeds.
+ */
+export function estimateAiCarousel(c: Client, workspaceId: string, body: AiCarouselBody) {
+  return c.post<any>(`/workspaces/${workspaceId}/ai/carousels/estimate`, { json: body });
+}
+
+/**
+ * POST /workspaces/{w}/ai/carousels/generate — answers when the deck is done (up to ~3 minutes)
+ * with {carousel_id, slides[{position, media_id, url, ...}], caption, style, credits, ...}.
+ */
+export function generateAiCarousel(c: Client, workspaceId: string, body: AiCarouselBody) {
+  return c.post<any>(`/workspaces/${workspaceId}/ai/carousels/generate`, { json: body });
+}
+
+/** POST /workspaces/{w}/ai/carousels/{carousel_id}/edit — one plain-language change; answers with the deck. */
+export function editAiCarousel(
+  c: Client,
+  workspaceId: string,
+  carouselId: string,
+  body: AiCarouselEditBody,
+) {
+  return c.post<any>(`/workspaces/${workspaceId}/ai/carousels/${seg(carouselId)}/edit`, {
+    json: body,
+  });
+}
+
 // ── ads analytics ─────────────────────────────────────────
 
 /**
