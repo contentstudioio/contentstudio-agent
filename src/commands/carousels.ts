@@ -29,7 +29,7 @@ function optionFlags<T>(y: Argv<T>) {
     .option("prompt", { type: "string", describe: `Required. Max ${MAX_PROMPT_LENGTH} chars.` })
     .option("slides", {
       type: "number",
-      describe: "slide_count (2-10). Omit it and the AI chooses the length.",
+      describe: "slide_count (3-10). Omit it and the AI chooses the length.",
     })
     .option("size", {
       type: "string",
