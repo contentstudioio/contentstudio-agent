@@ -343,11 +343,11 @@ leaving the user with a half-finished job.
   - **Rejected (422) together with `--instagram-collaborator`.** Share-to-story is silently dropped (not rejected) when combined with a trial reel.
   - Not available when the workspace posts to Instagram via the mobile app (`instagram_posting_option=mobile`).
 - `--platform-overrides '<json>'` → `platform_overrides` (top-level, works across any platform in the post). Pass a JSON **object** keyed by platform (`facebook`, `instagram`, `twitter`, `linkedin`, `pinterest`, `youtube`, `tiktok`, `gmb`, `tumblr`, `threads`, `bluesky`, `telegram`); the CLI parses it locally (invalid JSON → `ConfigError`) and sends it verbatim.
-  - Shape per platform: `{ "content": { "text"?: <string>, "post_type"?: <string>, "media"?: { "images"?: <url[] ≤10>, "video"?: <url> } } }`.
+  - Shape per platform: `{ "content": { "text"?: <string>, "post_type"?: <string>, "media"?: { "images"?: <url[]>, "video"?: <url> } } }`.
   - `text` and `post_type` each merge **independently** with the common top-level `content` — an override with only `media` still inherits the common `text`/`post_type`.
   - `media` is **atomic**: if an override's `content` includes a `media` key at all, that platform's media is defined ENTIRELY by the override (no per-field fallback to the common media for whichever of `images`/`video` it omits). Omitting `media` entirely inherits the common `content.media` wholesale. This exists because some platforms (e.g. TikTok) can never support mixed images+video.
   - Omitting `--platform-overrides` entirely publishes the same top-level `content` to every targeted platform.
-  - Override images are URLs only (no `media_ids`) and follow the same validation as the top-level media (max 10 images, no mixing images+video in one override).
+  - Override images are URLs only (no `media_ids`) and follow the same validation as the top-level media (each platform's own image limit — e.g. Instagram carousel 20, Facebook 10, Bluesky 4 — and no mixing images+video in one override).
 - **Approval — two mutually-exclusive systems (pass only one):**
   - **Legacy** `--approver <user_id>` (repeatable) + `--approve-option anyone|everyone` (default `anyone`) + `--approval-notes "..."` → builds `approval: {approvers, approve_option, notes}` only when at least one approver is given. The post creator cannot be an approver. `anyone` = any single approver; `everyone` = all must approve.
   - **Workflow** `--approval-workflow-id <id>` + `--approval-workflow-notes "..."` → `approval_workflow: {workflow_id, notes?}` — ATTACH a workflow (works on both create and update). Get the id from `approval-workflows:list` (its `id`).
